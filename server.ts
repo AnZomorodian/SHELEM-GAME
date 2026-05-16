@@ -215,13 +215,27 @@ async function startServer() {
     const hakamTeamPoints = room.pointsThisRound[hakamTeam];
     const otherTeamPoints = room.pointsThisRound[otherTeam];
     const bid = room.highestBid.value;
+    let roundScore = hakamTeamPoints;
 
-    if (hakamTeamPoints >= bid) {
-      room.scores[hakamTeam] += hakamTeamPoints;
+    // Shelem Bonus (All points in a round)
+    if (hakamTeamPoints === 165) {
+      roundScore = 330; // Double points for Shelem
+    } else if (otherTeamPoints === 165) {
+      // Shelem against bidder!
+      room.scores[hakamTeam] -= 330;
+      room.scores[otherTeam] += 165; // Normal points for them or maybe also bonus
+      roundScore = 0; // Hakam team gets nothing
+    }
+
+    if (hakamTeamPoints >= bid && roundScore > 0) {
+      room.scores[hakamTeam] += roundScore;
+      room.scores[otherTeam] += otherTeamPoints === 165 ? 0 : otherTeamPoints;
+    } else if (roundScore === 0 && otherTeamPoints === 165) {
+        // Handled in Shelem logic above
     } else {
       room.scores[hakamTeam] -= bid;
+      room.scores[otherTeam] += otherTeamPoints;
     }
-    room.scores[otherTeam] += otherTeamPoints;
 
     const WINNING_SCORE = room.mode === '2_PLAYER' ? 1200 : 660; 
     if (room.scores[0] >= WINNING_SCORE || room.scores[1] >= WINNING_SCORE) {
@@ -564,10 +578,25 @@ async function startServer() {
 
     socket.on('disconnect', () => {
       rooms.forEach((room, roomId) => {
-        const idx = room.players.findIndex(p => p.socketId === socket.id);
-        if (idx !== -1) {
-            // Player disconnected
+        const playerIdx = room.players.findIndex(p => p.socketId === socket.id);
+        const spectatorIdx = room.spectators.findIndex(s => s.socketId === socket.id);
+        
+        if (playerIdx !== -1) {
+          // In a real app we'd wait for reconnect, but for now we'll just log
+          console.log(`Player ${room.players[playerIdx].name} disconnected from room ${roomId}`);
+        } else if (spectatorIdx !== -1) {
+          room.spectators.splice(spectatorIdx, 1);
+          io.to(roomId).emit('game_update', room);
         }
+
+        // Cleanup empty rooms
+        setTimeout(() => {
+          const updatedRoom = rooms.get(roomId);
+          if (updatedRoom && updatedRoom.players.length === 0 && updatedRoom.spectators.length === 0) {
+            rooms.delete(roomId);
+            console.log(`Room ${roomId} deleted (empty)`);
+          }
+        }, 30000); // 30 seconds buffer
       });
     });
   });

@@ -62,18 +62,18 @@ export default function Card({ card, onClick, selected, disabled, small, hidden,
       whileTap={!disabled ? { scale: 0.95 } : {}}
       onClick={!disabled ? onClick : undefined}
       className={`
-        ${small ? 'w-10 h-16 text-[10px]' : 'w-16 h-24 md:w-20 md:h-32'} 
-        bg-white rounded-xl flex flex-col items-center justify-between p-1.5 md:p-2.5 cursor-pointer relative overflow-hidden group
+        ${small ? 'w-10 h-16 text-[10px]' : 'w-16 h-24 md:w-20 md:h-32 lg:w-24 lg:h-36'} 
+        bg-white rounded-xl flex flex-col items-center justify-between p-1.5 md:p-2.5 lg:p-4 cursor-pointer relative overflow-hidden group
         border-b-4 flex-shrink-0
         transition-all duration-300
-        ${selected ? 'ring-4 ring-emerald-500 -translate-y-6 border-emerald-600 z-50 shadow-[0_20px_40px_rgba(16,185,129,0.3)]' : 'shadow-lg border-gray-200'}
+        ${selected ? 'ring-4 ring-emerald-500 -translate-y-6 md:-translate-y-8 border-emerald-600 z-50 shadow-[0_20px_40px_rgba(16,185,129,0.3)]' : 'shadow-lg border-gray-200'}
         ${highlighted && !disabled && !selected ? 'ring-4 ring-yellow-400 border-yellow-500 shadow-[0_0_20px_rgba(250,204,21,0.4)]' : ''}
         ${disabled ? 'opacity-40 grayscale cursor-not-allowed bg-gray-50 border-gray-200' : 'hover:scale-110'}
         ${suitColors[card.suit]}
       `}
     >
       <div className="flex flex-col items-center self-start gap-0.5">
-        <div className="font-black leading-none text-sm md:text-base">
+        <div className="font-black leading-none text-sm md:text-base lg:text-xl">
           {card.rank}
         </div>
         <div className="opacity-80">
@@ -82,13 +82,13 @@ export default function Card({ card, onClick, selected, disabled, small, hidden,
       </div>
       
       <div className={`w-full flex-1 flex items-center justify-center`}>
-        <div className={`${small ? 'p-1' : 'p-2 md:p-3'} rounded-full bg-current/5 border border-current/10 flex items-center justify-center transition-transform group-hover:scale-125 duration-500`}>
+        <div className={`${small ? 'p-1' : 'p-2 md:p-3 lg:p-4'} rounded-full bg-current/5 border border-current/10 flex items-center justify-center transition-transform group-hover:scale-125 duration-500`}>
           {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: small ? 16 : 28 })}
         </div>
       </div>
 
       <div className="flex flex-col items-center self-end gap-0.5 rotate-180">
-        <div className="font-black leading-none text-sm md:text-base">
+        <div className="font-black leading-none text-sm md:text-base lg:text-xl">
           {card.rank}
         </div>
         <div className="opacity-80">

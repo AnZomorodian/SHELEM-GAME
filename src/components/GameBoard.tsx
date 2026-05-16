@@ -428,22 +428,24 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
             
             {/* Current Trick Indicators */}
             {room.currentTrick.length > 0 && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[45]">
-                <div className="bg-black/60 backdrop-blur-xl px-5 py-2 rounded-2xl border border-white/10 flex items-center gap-4 animate-in fade-in zoom-in duration-500 shadow-2xl">
-                  <div className="flex flex-col items-center">
-                    <span className="text-[7px] text-white/40 uppercase font-black tracking-widest mb-1">Lead</span>
-                    <div className="scale-125">
-                        <SuitIcon suit={room.currentTrick[0].card.suit} />
-                    </div>
+              <div className="absolute top-[-70px] left-1/2 -translate-x-1/2 pointer-events-none z-[45] w-fit">
+                <motion.div 
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="bg-black/60 backdrop-blur-xl px-4 py-1.5 rounded-xl border border-white/10 flex items-center gap-3 shadow-2xl whitespace-nowrap"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-[7px] text-white/40 uppercase font-black tracking-widest">Lead</span>
+                    <SuitIcon suit={room.currentTrick[0].card.suit} size={10} />
                   </div>
-                  <div className="w-px h-8 bg-white/10" />
-                  <div className="flex flex-col items-start min-w-[80px]">
-                    <span className="text-[7px] text-white/40 uppercase font-black tracking-widest mb-0.5">Winning</span>
-                    <span className="text-xs font-black text-emerald-400 truncate w-full">
+                  <div className="w-px h-4 bg-white/10" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-[7px] text-white/40 uppercase font-black tracking-widest">Winning</span>
+                    <span className="text-[10px] font-black text-emerald-400">
                       {room.players.find((p:any) => p.id === getCurrentWinner())?.name || '...'}
                     </span>
                   </div>
-                </div>
+                </motion.div>
               </div>
             )}
 
@@ -525,22 +527,43 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
               </div>
             )}
 
-            {room.phase === 'BIDDING' && (
-              <BiddingOverlay 
-                  room={room}
-                  isMyTurn={isMyTurn}
-                  onBid={handleBid}
-                  isLoading={isActionLoading}
-              />
-            )}
+            {/* Center Area (Empty) */}
+            <div className="relative z-10 w-full aspect-square md:w-96 md:h-96 flex items-center justify-center pointer-events-none" />
+             
+            {/* Overlays (BIDDING, DISCARDING) */}
+            <AnimatePresence>
+                {room.phase === 'BIDDING' && (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="absolute inset-0 z-[100] flex items-center justify-center p-4 md:p-10 pointer-events-auto bg-black/40 backdrop-blur-sm"
+                    >
+                        <BiddingOverlay 
+                            room={room}
+                            isMyTurn={isMyTurn}
+                            onBid={handleBid}
+                            isLoading={isActionLoading}
+                        />
+                    </motion.div>
+                )}
 
-            {room.phase === 'DISCARDING' && isMyTurn && (
-              <DiscardOverlay 
-                  selectedCards={selectedCards}
-                  onConfirm={confirmDiscard}
-                  isLoading={isActionLoading}
-              />
-            )}
+                {room.phase === 'DISCARDING' && isMyTurn && (
+                    <motion.div 
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="absolute inset-0 z-[100] flex items-center justify-center p-4 md:p-10 pointer-events-auto bg-black/40 backdrop-blur-sm"
+                    >
+                        <DiscardOverlay 
+                            selectedCards={selectedCards}
+                            onConfirm={confirmDiscard}
+                            isLoading={isActionLoading}
+                        />
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
 
             {room.hokm && room.phase !== 'LOBBY' && (
               <div className="absolute top-[-140px] bg-black/50 px-6 py-2 rounded-full border border-white/10 flex items-center gap-3 backdrop-blur-sm">
@@ -726,8 +749,8 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
           })}
 
           {/* My Hand at Bottom */}
-          <div className="absolute bottom-[-15px] md:bottom-[-20px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-full max-w-full overflow-hidden">
-            <div className={`flex justify-center -space-x-4 md:-space-x-8 lg:-space-x-4 px-4 pb-10 md:pb-12 hover:space-x-1 md:hover:space-x-2 transition-all duration-300 scale-[0.65] md:scale-100 origin-bottom`}>
+          <div className="absolute bottom-[-10px] md:bottom-[-20px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-full max-w-7xl mx-auto overflow-hidden">
+            <div className={`flex justify-center -space-x-6 md:-space-x-10 lg:-space-x-6 px-4 pb-12 transition-all duration-300 scale-[0.7] sm:scale-[0.8] md:scale-90 lg:scale-100 origin-bottom`}>
                 {!isSpectator && room.players[myIndex]?.cards.map((c: CardData, i: number) => (
                   <Card 
                     key={`${c.suit}-${c.rank}`} 
@@ -1242,8 +1265,8 @@ function BiddingOverlay({ room, isMyTurn, onBid, isLoading }: any) {
     const lastBidderName = lastBidderId ? room.players.find((p:any) => p.id === lastBidderId)?.name : 'No one';
 
     return (
-        <div className="bg-[#14452f]/95 backdrop-blur-2xl p-8 rounded-[40px] border border-white/10 shadow-2xl w-[480px]">
-            <h2 className="text-center text-[10px] font-black uppercase tracking-[0.2em] mb-6 text-white/40">
+        <div className="bg-[#14452f]/95 backdrop-blur-2xl p-6 md:p-8 rounded-[30px] md:rounded-[40px] border border-white/10 shadow-2xl w-full max-w-[480px]">
+            <h2 className="text-center text-[10px] font-black uppercase tracking-[0.2em] mb-4 md:mb-6 text-white/40">
                 {isMyTurn ? 'YOUR TURN TO BID' : 'WAITING FOR BIDS...'}
             </h2>
             
@@ -1328,8 +1351,8 @@ function DiscardOverlay({ selectedCards, onConfirm, isLoading }: any) {
     const selectedCount = selectedCards.length;
     
     return (
-        <div className="bg-[#14452f]/95 backdrop-blur-2xl p-8 rounded-[40px] border border-white/10 shadow-2xl w-[440px]">
-             <h2 className="text-center text-[10px] font-black uppercase tracking-[0.2em] mb-6 text-yellow-500">
+        <div className="bg-[#14452f]/95 backdrop-blur-2xl p-6 md:p-8 rounded-[30px] md:rounded-[40px] border border-white/10 shadow-2xl w-full max-w-[440px]">
+             <h2 className="text-center text-[10px] font-black uppercase tracking-[0.2em] mb-4 md:mb-6 text-yellow-500">
                 PICK TRUMP & DISCARD 4
             </h2>
 
