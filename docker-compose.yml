@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    image: shelem-game
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - APP_URL=${APP_URL:-http://localhost:3000}
+    volumes:
+      - ./Database.json:/app/Database.json
+      - ./game_history.json:/app/game_history.json
+      - ./Images:/app/Images
+    restart: unless-stopped
