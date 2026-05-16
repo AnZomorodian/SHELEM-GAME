@@ -27,6 +27,13 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
   const [mode, setMode] = useState<'INITIAL' | 'CREATE' | 'JOIN'>('INITIAL');
   const [gameMode, setGameMode] = useState<'2_PLAYER' | '4_PLAYER'>('4_PLAYER');
 
+  const selectedFont = localStorage.getItem('shelem_font') || '"Inter", sans-serif';
+  const selectedTheme = localStorage.getItem('shelem_theme') || 'emerald';
+
+  useEffect(() => {
+    document.body.setAttribute('data-theme', selectedTheme);
+  }, [selectedTheme]);
+
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -103,7 +110,13 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
 
   if (!user) {
     return (
-      <div className="w-full max-w-md bg-[#14452f] backdrop-blur-xl border border-white/10 p-8 rounded-[40px] shadow-2xl overflow-hidden relative">
+      <div 
+        className="w-full max-w-md backdrop-blur-xl border border-white/10 p-8 rounded-[40px] shadow-2xl overflow-hidden relative transition-colors duration-500"
+        style={{ 
+          fontFamily: selectedFont,
+          backgroundColor: 'var(--game-felt)'
+        }}
+      >
         <div className="text-center mb-8">
           <div className="w-12 h-12 bg-yellow-500 rounded-xl flex items-center justify-center font-black text-black text-3xl mx-auto mb-4 shadow-lg shadow-yellow-500/20">S</div>
           <h1 className="text-4xl font-black tracking-tighter mb-2 text-white uppercase">DEEP SHELEM</h1>
@@ -163,7 +176,13 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
   }
 
   return (
-    <div className="w-full max-w-md bg-[#14452f] backdrop-blur-xl border border-white/10 p-8 rounded-[40px] shadow-2xl overflow-hidden relative">
+    <div 
+        className="w-full max-w-md backdrop-blur-xl border border-white/10 p-8 rounded-[40px] shadow-2xl overflow-hidden relative transition-colors duration-500"
+        style={{ 
+            fontFamily: selectedFont,
+            backgroundColor: 'var(--game-felt)'
+        }}
+    >
       <div className="absolute top-4 right-4 opacity-10 flex gap-2 text-yellow-500">
         <Spade size={32} />
         <Heart size={32} />

@@ -56,10 +56,21 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   const [showPossiblePlays, setShowPossiblePlays] = useState(true);
   const [showReactions, setShowReactions] = useState(true);
   const [showEmojiBar, setShowEmojiBar] = useState(true);
+  const [selectedFont, setSelectedFont] = useState(() => localStorage.getItem('shelem_font') || '"Inter", sans-serif');
+  const [selectedTheme, setSelectedTheme] = useState(() => localStorage.getItem('shelem_theme') || 'emerald');
   const [resignRequest, setResignRequest] = useState<any>(null);
   const [reactions, setReactions] = useState<{ [playerId: string]: string }>({});
   const [localStats, setLocalStats] = useState<any>({ wins: 0, losses: 0, games: 0 });
   const [isActionLoading, setIsActionLoading] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem('shelem_font', selectedFont);
+  }, [selectedFont]);
+
+  useEffect(() => {
+    localStorage.setItem('shelem_theme', selectedTheme);
+    document.body.setAttribute('data-theme', selectedTheme);
+  }, [selectedTheme]);
 
   useEffect(() => {
     setIsActionLoading(false);
@@ -329,7 +340,13 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   }, [room.lastTrickWinnerId]);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden bg-[#0a2e1f] text-white">
+    <div 
+      className="flex flex-col h-screen overflow-hidden text-white transition-colors duration-500"
+      style={{ 
+        fontFamily: selectedFont,
+        backgroundColor: 'var(--game-bg)'
+      }}
+    >
       {/* Header */}
       <header className="bg-black/30 backdrop-blur-md px-4 md:px-6 py-3 md:py-4 flex justify-between items-center border-b border-white/10 shrink-0">
         <div className="flex items-center gap-2 md:gap-4">
@@ -373,7 +390,13 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
       <main className="flex-1 flex flex-col lg:flex-row p-3 md:p-6 gap-3 md:gap-6 relative overflow-hidden">
         {/* Game Area */}
-        <div className="flex-1 relative bg-[#145a32] rounded-[30px] md:rounded-[60px] border-[6px] md:border-[12px] border-[#0a2e1f] shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center overflow-hidden min-h-[300px]">
+        <div 
+            className="flex-1 relative rounded-[30px] md:rounded-[60px] border-[6px] md:border-[12px] shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center overflow-hidden min-h-[300px] transition-colors duration-500"
+            style={{ 
+                backgroundColor: 'var(--game-felt)',
+                borderColor: 'var(--game-bg)'
+            }}
+        >
           <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/felt.png")' }} />
           
           {/* Decorative Felt Circle */}
@@ -966,6 +989,56 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                             </div>
                         );
                     })()}
+
+                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
+                        <label className="block text-[10px] font-black uppercase text-white/40 mb-1 ml-1 px-1">Visuals</label>
+                        
+                        <div className="space-y-3">
+                            <p className="text-xs font-bold px-1 text-white/60">Color Theme</p>
+                            <div className="grid grid-cols-4 gap-2">
+                                {[
+                                    { id: 'emerald', color: '#10b981', name: 'Emerald' },
+                                    { id: 'blue', color: '#3b82f6', name: 'Blue' },
+                                    { id: 'rose', color: '#f43f5e', name: 'Rose' },
+                                    { id: 'amber', color: '#f59e0b', name: 'Amber' }
+                                ].map(theme => (
+                                    <button
+                                        key={theme.id}
+                                        onClick={() => setSelectedTheme(theme.id)}
+                                        className={`group relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${selectedTheme === theme.id ? 'border-white bg-white/10' : 'border-transparent bg-black/20 hover:bg-black/40'}`}
+                                        title={theme.name}
+                                    >
+                                        <div 
+                                            className="w-8 h-8 rounded-full border-2 border-white/20 shadow-lg" 
+                                            style={{ backgroundColor: theme.color }}
+                                        />
+                                        <span className="text-[8px] font-black uppercase tracking-tighter opacity-40 group-hover:opacity-100">{theme.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="space-y-3 pt-2">
+                            <p className="text-xs font-bold px-1 text-white/60">Font Style</p>
+                            <div className="flex flex-col gap-2">
+                                {[
+                                    { id: '"Inter", sans-serif', name: 'Modern (Inter)' },
+                                    { id: '"Space Grotesk", sans-serif', name: 'Tech (Space Grotesk)' },
+                                    { id: '"JetBrains Mono", monospace', name: 'Minimal (Mono)' }
+                                ].map(font => (
+                                    <button
+                                        key={font.id}
+                                        onClick={() => setSelectedFont(font.id)}
+                                        className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${selectedFont === font.id ? 'border-white bg-white/10' : 'border-transparent bg-black/20 hover:bg-black/40'}`}
+                                        style={{ fontFamily: font.id }}
+                                    >
+                                        <span className="text-sm font-bold">{font.name}</span>
+                                        {selectedFont === font.id && <CheckCircle2 size={16} className="text-emerald-500" />}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
 
                     <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
                         <div className="flex items-center justify-between">
