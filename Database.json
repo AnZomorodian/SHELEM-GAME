@@ -1,0 +1,16 @@
+{
+  "users": [
+    {
+      "id": "jGcor6dgHrSzejAxlSM1a",
+      "username": "CoMoBoBia",
+      "password": "$2a$10$gL5pv37FhQJ3oPhnA6Vdz.dwUKV7w9gXycql3r43LzDPum6Ex./L2",
+      "avatar": "/Images/2M3oG_kOQY3slcxI2Pk10.png"
+    },
+    {
+      "id": "SFDco0D16XnqzUsgFYar1",
+      "username": "Artin",
+      "password": "$2a$10$rSuUm3AP2bvMlf/mRzZ25eCtIN49PvGoJ4HsMdBbiBhjRq2BK7A9S",
+      "avatar": "/Images/wG-g0DDQg2dWy7qJVaA9k.jpg"
+    }
+  ]
+}

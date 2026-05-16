@@ -5,15 +5,38 @@ import { Server } from 'socket.io';
 import { createServer as createViteServer } from 'vite';
 import { nanoid } from 'nanoid';
 import fs from 'fs';
+import multer from 'multer';
+import bcrypt from 'bcryptjs';
 
 const PORT = 3000;
 const IS_PROD = process.env.NODE_ENV === 'production';
 const DB_FILE = path.join(process.cwd(), 'game_history.json');
+const USERS_DB = path.join(process.cwd(), 'Database.json');
+const IMAGES_DIR = path.join(process.cwd(), 'Images');
 
-// Initialize "Local Database"
+// Initialize Directories & DBs
+if (!fs.existsSync(IMAGES_DIR)) fs.mkdirSync(IMAGES_DIR);
 if (!fs.existsSync(DB_FILE)) {
   fs.writeFileSync(DB_FILE, JSON.stringify({ games: [] }, null, 2));
 }
+if (!fs.existsSync(USERS_DB)) {
+  fs.writeFileSync(USERS_DB, JSON.stringify({ users: [] }, null, 2));
+}
+
+// Multer Setup
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, 'Images/');
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${nanoid()}${ext}`);
+  }
+});
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
 
 function saveGameResult(result: any) {
   try {
@@ -23,6 +46,14 @@ function saveGameResult(result: any) {
   } catch (err) {
     console.error('Failed to save game result:', err);
   }
+}
+
+function getUsers() {
+  return JSON.parse(fs.readFileSync(USERS_DB, 'utf-8')).users;
+}
+
+function saveUsers(users: any[]) {
+  fs.writeFileSync(USERS_DB, JSON.stringify({ users }, null, 2));
 }
 
 // Game Types
@@ -56,7 +87,7 @@ interface Room {
   id: string;
   mode: '2_PLAYER' | '4_PLAYER';
   players: Player[];
-  spectators: { id: string; name: string; avatar: string }[];
+  spectators: { id: string; name: string; avatar: string; socketId: string }[];
   phase: GamePhase;
   subPhase?: 'HAND' | 'PILE'; // For 2-player mode
   currentTurn: number; 
@@ -72,6 +103,7 @@ interface Room {
   bids: { [playerId: string]: number | 'PASS' };
   pointsThisRound: { [team: number]: number };
   roundCount: number;
+  trickHistory: { winnerName: string; cards: Card[]; points: number }[];
   resignRequest?: { requesterId: string; status: 'PENDING' | 'REJECTED' };
 }
 
@@ -79,6 +111,58 @@ const rooms: Map<string, Room> = new Map();
 
 async function startServer() {
   const app = express();
+  app.use(express.json());
+  app.use('/Images', express.static(IMAGES_DIR));
+
+  // Auth & Upload Endpoints
+  app.post('/api/register', async (req, res) => {
+    const { username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+    
+    const users = getUsers();
+    if (users.find((u: any) => u.username === username)) {
+      return res.status(400).json({ error: 'Username already exists' });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = { id: nanoid(), username, password: hashedPassword, avatar: null };
+    users.push(newUser);
+    saveUsers(users);
+    res.json({ message: 'User registered', userId: newUser.id });
+  });
+
+  app.post('/api/login', async (req, res) => {
+    const { username, password } = req.body;
+    const users = getUsers();
+    const user = users.find((u: any) => u.username === username);
+    
+    if (!user || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    res.json({ 
+      id: user.id, 
+      username: user.username, 
+      avatar: user.avatar 
+    });
+  });
+
+  app.post('/api/upload-avatar', upload.single('avatar'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const { userId } = req.body;
+    const users = getUsers();
+    const user = users.find((u: any) => u.id === userId);
+    
+    if (user) {
+      const avatarUrl = `/Images/${req.file.filename}`;
+      user.avatar = avatarUrl;
+      saveUsers(users);
+      res.json({ avatar: avatarUrl });
+    } else {
+      res.status(404).json({ error: 'User not found' });
+    }
+  });
+
   const httpServer = createServer(app);
   const io = new Server(httpServer, {
     cors: { origin: '*' }
@@ -150,7 +234,8 @@ async function startServer() {
         scores: { 0: 0, 1: 0 },
         bids: {},
         pointsThisRound: { 0: 0, 1: 0 },
-        roundCount: 0
+        roundCount: 0,
+        trickHistory: []
       };
       rooms.set(roomId, room);
       socket.join(roomId);
@@ -321,6 +406,13 @@ async function startServer() {
             const trickPoints = calculateTrickPoints(room.currentTrick.map(t => t.card));
             room.pointsThisRound[room.players[winnerIndex].team] += trickPoints;
 
+            room.trickHistory.push({
+              winnerName: room.players[winnerIndex].name,
+              cards: room.currentTrick.map(t => t.card),
+              points: trickPoints
+            });
+            if (room.trickHistory.length > 5) room.trickHistory.shift();
+
             io.to(roomId).emit('game_update', room);
             
             setTimeout(() => {
@@ -356,6 +448,13 @@ async function startServer() {
           const winnerIndex = room.players.findIndex(p => p.id === winnerId);
           const trickPoints = calculateTrickPoints(room.currentTrick.map(t => t.card));
           room.pointsThisRound[room.players[winnerIndex].team] += trickPoints;
+
+          room.trickHistory.push({
+            winnerName: room.players[winnerIndex].name,
+            cards: room.currentTrick.map(t => t.card),
+            points: trickPoints
+          });
+          if (room.trickHistory.length > 5) room.trickHistory.shift();
 
           io.to(roomId).emit('game_update', room);
           
@@ -463,6 +562,7 @@ function startNewRound(room: Room) {
   room.bids = {};
   room.pointsThisRound = { 0: 0, 1: 0 };
   room.currentTrick = [];
+  room.trickHistory = [];
   room.piles = {};
 
   const deck = createDeck();

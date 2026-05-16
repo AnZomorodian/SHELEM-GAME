@@ -1,4 +1,4 @@
-# How to Run Shelem Online
+# How to Run Deep Shelem
 
 This is a full-stack real-time multiplayer card game. It uses **Express**, **Socket.io**, and **Vite**.
 

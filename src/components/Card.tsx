@@ -19,6 +19,7 @@ interface CardProps {
   hidden?: boolean;
   highlighted?: boolean;
   layoutId?: string;
+  key?: string | number;
 }
 
 const suitIcons = {
@@ -61,30 +62,50 @@ export default function Card({ card, onClick, selected, disabled, small, hidden,
       whileTap={!disabled ? { scale: 0.95 } : {}}
       onClick={!disabled ? onClick : undefined}
       className={`
-        ${small ? 'w-8 h-12 text-xs' : 'w-16 h-24 md:w-20 md:h-32'} 
-        bg-white rounded-lg flex flex-col items-center justify-between p-1 md:p-2 cursor-pointer relative overflow-hidden group
-        border-2 flex-shrink-0
+        ${small ? 'w-10 h-16 text-[10px]' : 'w-16 h-24 md:w-20 md:h-32'} 
+        bg-white rounded-xl flex flex-col items-center justify-between p-1.5 md:p-2.5 cursor-pointer relative overflow-hidden group
+        border-b-4 flex-shrink-0
         transition-all duration-300
-        ${selected ? 'ring-4 ring-emerald-500 -translate-y-6 border-emerald-500 z-50 shadow-[0_0_30px_rgba(16,185,129,0.5)]' : 'shadow-xl hover:shadow-2xl border-gray-100'}
-        ${highlighted && !disabled && !selected ? 'ring-4 ring-yellow-400 border-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.5)]' : ''}
-        ${disabled ? 'opacity-40 grayscale cursor-not-allowed' : ''}
+        ${selected ? 'ring-4 ring-emerald-500 -translate-y-6 border-emerald-600 z-50 shadow-[0_20px_40px_rgba(16,185,129,0.3)]' : 'shadow-lg border-gray-200'}
+        ${highlighted && !disabled && !selected ? 'ring-4 ring-yellow-400 border-yellow-500 shadow-[0_0_20px_rgba(250,204,21,0.4)]' : ''}
+        ${disabled ? 'opacity-40 grayscale cursor-not-allowed bg-gray-50 border-gray-200' : 'hover:scale-110'}
         ${suitColors[card.suit]}
       `}
     >
-      <div className="self-start font-black leading-none">
-        {card.rank}
+      <div className="flex flex-col items-center self-start gap-0.5">
+        <div className="font-black leading-none text-sm md:text-base">
+          {card.rank}
+        </div>
+        <div className="opacity-80">
+          {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: small ? 8 : 12 })}
+        </div>
       </div>
       
-      <div className={`w-1/2 h-1/2 flex items-center justify-center`}>
-        {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: small ? 16 : 24 })}
+      <div className={`w-full flex-1 flex items-center justify-center`}>
+        <div className={`${small ? 'p-1' : 'p-2 md:p-3'} rounded-full bg-current/5 border border-current/10 flex items-center justify-center transition-transform group-hover:scale-125 duration-500`}>
+          {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: small ? 16 : 28 })}
+        </div>
       </div>
 
-      <div className="self-end font-black leading-none rotate-180">
-        {card.rank}
+      <div className="flex flex-col items-center self-end gap-0.5 rotate-180">
+        <div className="font-black leading-none text-sm md:text-base">
+          {card.rank}
+        </div>
+        <div className="opacity-80">
+          {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: small ? 8 : 12 })}
+        </div>
+      </div>
+
+      {/* Decorative details */}
+      <div className="absolute top-1 right-1 opacity-5 mix-blend-multiply origin-top-right scale-150 rotate-12">
+          {suitIcons[card.suit]}
+      </div>
+      <div className="absolute bottom-1 left-1 opacity-5 mix-blend-multiply origin-bottom-left scale-150 rotate-12">
+          {suitIcons[card.suit]}
       </div>
 
       {/* Glossy overlay */}
-      <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
     </motion.div>
   );
 }

@@ -12,8 +12,13 @@ export default function App() {
   const [playerName, setPlayerName] = useState('');
   const [error, setError] = useState('');
   const [userId] = useState(() => {
-    const saved = localStorage.getItem('shelem_user_id');
-    if (saved) return saved;
+    const savedUser = localStorage.getItem('deep_shelem_user');
+    if (savedUser) {
+      const user = JSON.parse(savedUser);
+      return user.id;
+    }
+    const savedId = localStorage.getItem('shelem_user_id');
+    if (savedId) return savedId;
     const newId = 'user_' + Math.random().toString(36).substring(2, 11);
     localStorage.setItem('shelem_user_id', newId);
     return newId;

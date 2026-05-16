@@ -11,15 +11,64 @@ interface GameBoardProps {
   playerName: string;
 }
 
+const AVATAR_COLORS: { [key: string]: string } = {
+  '🧔': 'bg-blue-500',
+  '👨': 'bg-emerald-500',
+  '👩': 'bg-rose-500',
+  '👴': 'bg-amber-500',
+  '👵': 'bg-pink-500',
+  '👸': 'bg-purple-500',
+  '🤴': 'bg-yellow-500',
+  '🥷': 'bg-slate-700',
+  '🧙': 'bg-indigo-600',
+  '🧛': 'bg-red-900',
+  '🧟': 'bg-green-900',
+  '🤖': 'bg-cyan-500',
+  '🦊': 'bg-orange-500',
+  '🐱': 'bg-yellow-400',
+  '🐶': 'bg-amber-600',
+  '🦁': 'bg-orange-600'
+};
+
+function PlayerAvatar({ avatar, className = "" }: { avatar: string; className?: string }) {
+  const isImage = avatar?.startsWith('/Images') || avatar?.startsWith('data:');
+  return (
+    <div className={`w-full h-full flex items-center justify-center relative ${className}`}>
+      {isImage ? (
+        <img src={avatar} alt="Avatar" className="w-full h-full object-cover" />
+      ) : (
+        <>
+          <div className={`absolute inset-0 opacity-40 ${AVATAR_COLORS[avatar] || 'bg-emerald-800'}`} />
+          <span className="relative z-10">{avatar}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function GameBoard({ room, socket, playerName }: GameBoardProps) {
   const [selectedCards, setSelectedCards] = useState<CardData[]>([]);
   const [showRules, setShowRules] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showPossiblePlays, setShowPossiblePlays] = useState(true);
+  const [showReactions, setShowReactions] = useState(true);
+  const [showEmojiBar, setShowEmojiBar] = useState(true);
   const [resignRequest, setResignRequest] = useState<any>(null);
   const [reactions, setReactions] = useState<{ [playerId: string]: string }>({});
+  const [localStats, setLocalStats] = useState<any>({ wins: 0, losses: 0, games: 0 });
+  const [isActionLoading, setIsActionLoading] = useState(false);
+
+  useEffect(() => {
+    setIsActionLoading(false);
+  }, [room.phase, room.currentTurn, room.currentTrick.length]);
+
+  useEffect(() => {
+    const stats = JSON.parse(localStorage.getItem('shelem_stats') || '{"wins": 0, "losses": 0, "games": 0}');
+    setLocalStats(stats);
+  }, []);
 
   useEffect(() => {
     socket.on('resign_requested', (data: any) => {
@@ -88,12 +137,13 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   const orderedPlayers = getOrderedPlayers();
 
   const handleBid = (value: number | 'PASS') => {
-    if (isSpectator) return;
+    if (isSpectator || isActionLoading) return;
+    setIsActionLoading(true);
     socket.emit('place_bid', { roomId: room.id, bid: value });
   };
 
   const handleAction = (card: CardData, fromPileIndex?: number) => {
-    if (isSpectator) return;
+    if (isSpectator || isActionLoading) return;
     if (room.phase === 'DISCARDING') {
       if (selectedCards.some(c => c.suit === card.suit && c.rank === card.rank)) {
         setSelectedCards(selectedCards.filter(c => !(c.suit === card.suit && c.rank === card.rank)));
@@ -101,13 +151,15 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
         setSelectedCards([...selectedCards, card]);
       }
     } else if (room.phase === 'PLAYING') {
+      setIsActionLoading(true);
       socket.emit('play_card', { roomId: room.id, card, fromPileIndex });
     }
   };
 
   const confirmDiscard = (hokm: Suit) => {
-    if (isSpectator) return;
+    if (isSpectator || isActionLoading) return;
     if (selectedCards.length === 4) {
+      setIsActionLoading(true);
       socket.emit('select_hokm_and_discard', { roomId: room.id, hokm, discards: selectedCards });
       setSelectedCards([]);
     }
@@ -279,58 +331,74 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#0a2e1f] text-white">
       {/* Header */}
-      <header className="bg-black/30 backdrop-blur-md px-6 py-4 flex justify-between items-center border-b border-white/10 shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-black text-2xl shadow-lg shadow-yellow-500/20">S</div>
+      <header className="bg-black/30 backdrop-blur-md px-4 md:px-6 py-3 md:py-4 flex justify-between items-center border-b border-white/10 shrink-0">
+        <div className="flex items-center gap-2 md:gap-4">
+          <div className="w-8 h-8 md:w-10 md:h-10 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-black text-xl md:text-2xl shadow-lg shadow-yellow-500/20">S</div>
           <div>
-            <h1 className="text-xl font-black tracking-tighter uppercase leading-none">Shelem Online</h1>
-            <p className="text-xs text-yellow-500 font-bold uppercase tracking-widest">Classic Iranian Card Game</p>
+            <h1 className="text-base md:text-xl font-black tracking-tighter uppercase leading-none">Deep Shelem</h1>
+            <p className="hidden sm:block text-[10px] text-yellow-500 font-bold uppercase tracking-widest">Classic Iranian Card Game</p>
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
-          <div className="bg-white/10 px-4 py-2 rounded-full border border-white/20 flex items-center gap-2">
-            <span className="text-[10px] font-bold opacity-70 tracking-widest uppercase">Room:</span>
-            <span className="text-lg font-mono font-bold tracking-widest text-yellow-400">{room.id}</span>
+        <div className="flex items-center gap-2 md:gap-4">
+          <div className="bg-white/10 px-3 md:px-4 py-1.5 md:py-2 rounded-full border border-white/20 flex items-center gap-2">
+            <span className="hidden xs:block text-[8px] md:text-[10px] font-bold opacity-70 tracking-widest uppercase">Room:</span>
+            <span className="text-sm md:text-lg font-mono font-bold tracking-widest text-yellow-400">{room.id}</span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-1 md:gap-2">
+            <button 
+              onClick={() => setShowStats(!showStats)}
+              className="lg:hidden p-2.5 bg-white/5 hover:bg-white/10 rounded-full transition-all border border-white/10 text-emerald-400"
+              title="Stats"
+            >
+              <Users size={18} />
+            </button>
             <button 
               onClick={() => setShowRules(true)}
-              className="p-3 bg-white/5 hover:bg-white/10 rounded-full transition-all border border-white/10 text-emerald-400"
+              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-full transition-all border border-white/10 text-emerald-400"
               title="Game Rules"
             >
-              <HelpCircle size={20} />
+              <HelpCircle size={18} />
             </button>
             <button 
               onClick={() => setShowSettings(true)}
-              className="p-3 bg-white/5 hover:bg-white/10 rounded-full transition-all border border-white/10 text-white/60"
+              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-full transition-all border border-white/10 text-white/60"
               title="Settings"
             >
-              <Settings size={20} />
+              <Settings size={18} />
             </button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 flex p-6 gap-6 relative overflow-hidden">
+      <main className="flex-1 flex flex-col lg:flex-row p-3 md:p-6 gap-3 md:gap-6 relative overflow-hidden">
         {/* Game Area */}
-        <div className="flex-1 relative bg-[#14452f] rounded-[40px] border-[8px] border-[#0d3322] shadow-inner flex flex-col items-center justify-center overflow-hidden">
-          <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+        <div className="flex-1 relative bg-[#145a32] rounded-[30px] md:rounded-[60px] border-[6px] md:border-[12px] border-[#0a2e1f] shadow-[inset_0_0_50px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center overflow-hidden min-h-[300px]">
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/felt.png")' }} />
           
+          {/* Decorative Felt Circle */}
+          <div className="absolute w-[250px] h-[250px] md:w-[500px] md:h-[500px] rounded-full border border-white/5 opacity-20 pointer-events-none" />
+          <div className="absolute w-[150px] h-[150px] md:w-[300px] md:h-[300px] rounded-full border border-white/10 opacity-10 pointer-events-none" />
+
           {/* Trick Area (Center) */}
-          <div className="relative z-10 w-80 h-80 flex items-center justify-center">
+          <div className="relative z-10 w-full aspect-square max-w-[200px] md:max-w-none md:w-96 md:h-96 flex items-center justify-center">
+            {/* Table Surface Reflection */}
+            <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent rounded-full blur-3xl opacity-20 pointer-events-none" />
+            
             {/* Current Trick Indicators */}
             {room.currentTrick.length > 0 && (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-[45]">
-                <div className="bg-black/80 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/20 flex items-center gap-3 animate-in fade-in zoom-in duration-300">
+                <div className="bg-black/60 backdrop-blur-xl px-5 py-2 rounded-2xl border border-white/10 flex items-center gap-4 animate-in fade-in zoom-in duration-500 shadow-2xl">
                   <div className="flex flex-col items-center">
-                    <span className="text-[6px] text-white/30 uppercase font-black tracking-tighter">Lead</span>
-                    <SuitIcon suit={room.currentTrick[0].card.suit} />
+                    <span className="text-[7px] text-white/40 uppercase font-black tracking-widest mb-1">Lead</span>
+                    <div className="scale-125">
+                        <SuitIcon suit={room.currentTrick[0].card.suit} />
+                    </div>
                   </div>
-                  <div className="w-px h-6 bg-white/10" />
-                  <div className="flex flex-col items-center">
-                    <span className="text-[6px] text-white/30 uppercase font-black tracking-tighter">Winning</span>
-                    <span className="text-[10px] font-black text-emerald-400 truncate max-w-[60px]">
+                  <div className="w-px h-8 bg-white/10" />
+                  <div className="flex flex-col items-start min-w-[80px]">
+                    <span className="text-[7px] text-white/40 uppercase font-black tracking-widest mb-0.5">Winning</span>
+                    <span className="text-xs font-black text-emerald-400 truncate w-full">
                       {room.players.find((p:any) => p.id === getCurrentWinner())?.name || '...'}
                     </span>
                   </div>
@@ -370,22 +438,34 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                 return (
                   <motion.div
                     key={`${trick.playerId}-${i}`}
-                    initial={{ scale: 0, opacity: 0, y: 100 }}
+                    initial={{ 
+                        scale: 0.8, 
+                        opacity: 0, 
+                        y: pos === 0 ? 200 : pos === 2 ? -200 : 0,
+                        x: pos === 3 ? -200 : pos === 1 ? 200 : 0,
+                        rotate: angles[pos]
+                    }}
                     animate={{ 
                       scale: 1, 
                       opacity: 1,
-                      y: pos === 0 ? 40 : pos === 2 ? -40 : 0,
-                      x: pos === 3 ? -40 : pos === 1 ? 40 : 0,
-                      rotate: angles[pos] + (Math.random() * 10 - 5) + (trick.fromPile ? 5 : -5)
+                      y: pos === 0 ? 45 : pos === 2 ? -45 : 0,
+                      x: pos === 3 ? -45 : pos === 1 ? 45 : 0,
+                      rotate: angles[pos] + (Math.random() * 8 - 4) + (trick.fromPile ? 5 : -5)
+                    }}
+                    transition={{ 
+                        type: "spring", 
+                        damping: 20, 
+                        stiffness: 150,
+                        mass: 0.8
                     }}
                     exit={{ 
                         scale: 0.2, 
                         opacity: 0, 
                         x: exitPos[winnerPos]?.x || 0, 
                         y: exitPos[winnerPos]?.y || 0, 
-                        transition: { duration: 0.4, ease: "circIn" } 
+                        transition: { duration: 0.5, ease: "circIn" } 
                     }}
-                    className="absolute"
+                    className="absolute z-[40]"
                   >
                     <Card card={trick.card} small layoutId={`card-${trick.card.suit}-${trick.card.rank}`} />
                   </motion.div>
@@ -409,13 +489,15 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                   room={room}
                   isMyTurn={isMyTurn}
                   onBid={handleBid}
+                  isLoading={isActionLoading}
               />
             )}
 
             {room.phase === 'DISCARDING' && isMyTurn && (
               <DiscardOverlay 
-                  selectedCount={selectedCards.length}
+                  selectedCards={selectedCards}
                   onConfirm={confirmDiscard}
+                  isLoading={isActionLoading}
               />
             )}
 
@@ -431,67 +513,105 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
           {/* Piles for 2-Player mode */}
           {is2P && room.phase !== 'LOBBY' && (
-             <>
-                {/* My Piles (Bottom) */}
-                <div className="absolute bottom-[200px] flex gap-4">
-                    {room.piles[room.players[myIndex]?.id]?.map((pile: any, pIdx: number) => (
-                        <div key={pIdx} className="relative w-12 h-16">
-                            {pile.length > 0 && (
-                                <div className="absolute inset-0 bg-black/40 rounded-lg shadow-sm -mt-1 -ml-1 border border-white/5" />
-                            )}
-                            {pile.length > 0 && (
-                                <Card 
-                                    card={pile[pile.length - 1]} 
-                                    small 
-                                    onClick={() => {
-                                        playSound('play');
-                                        isMyTurn && room.subPhase === 'PILE' && handleAction(pile[pile.length - 1], pIdx);
-                                    }}
-                                    highlighted={possiblePlays.some((p: any) => p.suit === pile[pile.length - 1].suit && p.rank === pile[pile.length - 1].rank)}
-                                    layoutId={`card-${pile[pile.length - 1].suit}-${pile[pile.length - 1].rank}`}
-                                    disabled={!isMyTurn || room.subPhase !== 'PILE'}
-                                />
-                            )}
-                            <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 text-[9px] font-black text-white/30 uppercase">
-                                Pile {pIdx + 1}
+             <div className="absolute inset-x-0 inset-y-0 pointer-events-none flex flex-col justify-between py-16 md:py-[120px] items-center">
+                {/* Opponent Piles (Top) */}
+                <div className="flex flex-col items-center gap-1 md:gap-2 scale-75 md:scale-100">
+                    <span className="text-[7px] md:text-[8px] font-black text-white/20 uppercase tracking-[0.2em]">Opponent Ground Piles</span>
+                    <div className="flex gap-3 md:gap-6 rotate-180 pointer-events-auto bg-black/20 p-2 md:p-4 rounded-[1.5rem] md:rounded-[2.5rem] border border-white/5 backdrop-blur-md shadow-2xl relative">
+                        <div className="absolute inset-0 bg-rose-500/5 rounded-[1.5rem] md:rounded-[2.5rem] pointer-events-none" />
+                        {room.piles[room.players[(myIndex + 1) % 2]?.id]?.map((pile: any, pIdx: number) => (
+                            <div key={pIdx} className="relative w-10 h-14 md:w-14 md:h-20 group">
+                                {pile.length > 1 && (
+                                    <div className="absolute inset-0 bg-black/40 rounded-lg shadow-sm -mt-2 -ml-1 border border-white/5 rotate-2" />
+                                )}
+                                {pile.length > 2 && (
+                                    <div className="absolute inset-0 bg-black/40 rounded-lg shadow-sm -mt-1 -ml-0.5 border border-white/5 -rotate-1" />
+                                )}
+                                {pile.length > 0 && (
+                                    <div className="relative h-full scale-90 md:scale-100">
+                                        <div className="absolute -inset-1 bg-white/5 rounded-xl blur-sm opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        <Card 
+                                            card={pile[pile.length - 1]} 
+                                            small 
+                                            disabled
+                                        />
+                                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-black/80 px-1 md:px-1.5 py-0.5 rounded text-[7px] md:text-[8px] font-black text-white/60 border border-white/10">
+                                            {pile.length}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
 
-                {/* Opponent Piles (Top) */}
-                <div className="absolute top-[200px] flex gap-4 rotate-180">
-                    {room.piles[room.players[(myIndex + 1) % 2]?.id]?.map((pile: any, pIdx: number) => (
-                        <div key={pIdx} className="relative w-12 h-16">
-                             {pile.length > 0 && (
-                                <div className="absolute inset-0 bg-black/40 rounded-lg shadow-sm -mt-1 -ml-1 border border-white/5" />
-                            )}
-                            {pile.length > 0 && (
-                                <Card 
-                                    card={pile[pile.length - 1]} 
-                                    small 
-                                    disabled
-                                />
-                            )}
-                        </div>
-                    ))}
+                {/* My Piles (Bottom) */}
+                <div className="flex flex-col items-center gap-1 md:gap-2 scale-75 md:scale-100">
+                    <div className="flex gap-3 md:gap-6 pointer-events-auto bg-black/20 p-2 md:p-4 rounded-[1.5rem] md:rounded-[2.5rem] border border-white/5 backdrop-blur-md shadow-2xl relative">
+                        <div className="absolute inset-0 bg-emerald-500/5 rounded-[1.5rem] md:rounded-[2.5rem] pointer-events-none" />
+                        {room.piles[room.players[myIndex]?.id]?.map((pile: any, pIdx: number) => {
+                            const topCard = pile[pile.length - 1];
+                            const isPlayable = isMyTurn && room.subPhase === 'PILE' && topCard;
+                            const isHighlighted = possiblePlays.some((p: any) => p.suit === topCard?.suit && p.rank === topCard?.rank);
+
+                            return (
+                                <div key={pIdx} className="relative w-10 h-14 md:w-14 md:h-20 group">
+                                    {pile.length > 1 && (
+                                        <div className="absolute inset-0 bg-black/40 rounded-lg shadow-sm -mt-2 -ml-1 border border-white/5 rotate-2" />
+                                    )}
+                                    {pile.length > 2 && (
+                                        <div className="absolute inset-0 bg-black/40 rounded-lg shadow-sm -mt-1 -ml-0.5 border border-white/5 -rotate-1" />
+                                    )}
+                                    {pile.length > 0 && (
+                                        <div className={`relative h-full transition-all duration-300 scale-90 md:scale-100 ${isPlayable ? 'hover:-translate-y-3 cursor-pointer' : ''}`}>
+                                            {isHighlighted && (
+                                                <motion.div 
+                                                    layoutId={`pile-highlight-${pIdx}`}
+                                                    className="absolute -inset-2 bg-yellow-500/30 rounded-2xl blur-md"
+                                                    animate={{ opacity: [0.3, 0.8, 0.3], scale: [1, 1.1, 1] }}
+                                                    transition={{ duration: 1, repeat: Infinity }}
+                                                />
+                                            )}
+                                            <Card 
+                                                card={topCard} 
+                                                small 
+                                                onClick={() => {
+                                                    if (isPlayable) {
+                                                        playSound('play');
+                                                        handleAction(topCard, pIdx);
+                                                    }
+                                                }}
+                                                highlighted={isHighlighted}
+                                                layoutId={`card-${topCard.suit}-${topCard.rank}`}
+                                                disabled={!isPlayable}
+                                            />
+                                            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 bg-black/80 px-1 md:px-1.5 py-0.5 rounded text-[7px] md:text-[8px] font-black text-white/60 border border-white/10">
+                                                {pile.length}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+                    <span className="text-[7px] md:text-[8px] font-black text-white/20 uppercase tracking-[0.2em]">Your Ground Piles</span>
                 </div>
-             </>
+             </div>
           )}
 
           {/* Player Positions */}
           {orderedPlayers.map((player: any, i: number) => {
             if (!player) return null;
-            let posStyles = [
-              'bottom-6 left-1/2 -translate-x-1/2', // Bottom (YOU)
-              'right-8 top-1/2 -translate-y-1/2', // Right
-              'top-8 left-1/2 -translate-x-1/2', // Top
-              'left-8 top-1/2 -translate-y-1/2', // Left
+            let mdPosStyles = [
+              'bottom-4 md:bottom-6 left-1/2 -translate-x-1/2', // Bottom (YOU)
+              'right-2 md:right-8 top-1/2 -translate-y-1/2', // Right
+              'top-4 md:top-8 left-1/2 -translate-x-1/2', // Top
+              'left-2 md:left-8 top-1/2 -translate-y-1/2', // Left
             ];
             if (is2P) {
-                posStyles = [
-                    'bottom-6 left-1/2 -translate-x-1/2', // YOU
-                    'top-8 left-1/2 -translate-x-1/2', // OPPONENT
+                mdPosStyles = [
+                    'bottom-4 md:bottom-6 left-1/2 -translate-x-1/2', // YOU
+                    'top-4 md:top-8 left-1/2 -translate-x-1/2', // OPPONENT
                 ];
             }
             
@@ -500,20 +620,30 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
             const isDealer = room.dealerIndex === pRealIdx;
 
             return (
-              <div key={player.id} className={`absolute ${posStyles[i]} z-20 flex flex-col items-center`}>
+              <div key={player.id} className={`absolute ${mdPosStyles[i]} z-20 flex flex-col items-center scale-75 md:scale-100 transition-transform`}>
                 <div className="relative">
                   {isTurn && (
                     <motion.div 
                       layoutId="turn-glow"
-                      className="absolute inset-0 bg-yellow-500/20 rounded-full blur-xl scale-150"
-                      animate={{ opacity: [0.5, 1, 0.5] }}
-                      transition={{ duration: 2, repeat: Infinity }}
+                      className="absolute -inset-4 bg-yellow-500/30 rounded-full blur-2xl scale-125"
+                      animate={{ 
+                        opacity: [0.4, 0.8, 0.4],
+                        scale: [1.2, 1.4, 1.2]
+                      }}
+                      transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                    />
+                  )}
+                  {isTurn && (
+                    <motion.div 
+                      className="absolute -inset-1 rounded-full border-2 border-yellow-400 z-20"
+                      animate={{ scale: [1, 1.1, 1], opacity: [1, 0, 1] }}
+                      transition={{ duration: 1, repeat: Infinity }}
                     />
                   )}
                   
                   {/* Reaction Bubble */}
                   <AnimatePresence>
-                    {reactions[player.id] && (
+                    {showReactions && reactions[player.id] && (
                         <motion.div
                             initial={{ scale: 0, y: 0, opacity: 0 }}
                             animate={{ scale: 1.2, y: -40, opacity: 1 }}
@@ -527,12 +657,15 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                   </AnimatePresence>
 
                   <div className={`
-                    w-16 h-16 rounded-full border-4 flex items-center justify-center text-2xl transition-all duration-500 relative z-10
-                    ${isTurn ? 'border-yellow-500 bg-emerald-600 scale-110 shadow-lg shadow-yellow-500/40' : 'border-white/20 bg-emerald-800'}
+                    w-16 h-16 rounded-full border-4 flex items-center justify-center text-2xl transition-all duration-500 relative z-10 overflow-hidden
+                    ${isTurn ? 'border-yellow-500 scale-110 shadow-[0_0_30px_rgba(234,179,8,0.6)]' : 'border-white/20'}
                   `}>
-                    {player.avatar || '🧔'}
+                    <PlayerAvatar avatar={player.avatar || '🧔'} />
+                    {isTurn && (
+                        <div className="absolute inset-0 rounded-full border-[6px] border-yellow-400/30 animate-ping pointer-events-none" />
+                    )}
                     {isDealer && (
-                      <div className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center border-2 border-[#14452f] shadow-lg">
+                      <div className="absolute -top-1 -right-1 w-6 h-6 bg-yellow-500 rounded-full flex items-center justify-center border-2 border-[#14452f] shadow-lg z-20">
                         <Crown size={12} className="text-black fill-black" />
                       </div>
                     )}
@@ -552,8 +685,8 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
           })}
 
           {/* My Hand at Bottom */}
-          <div className="absolute bottom-[-20px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto">
-            <div className="flex justify-center -space-x-2 md:-space-x-4 lg:space-x-1 px-10 pb-12 hover:space-x-2 transition-all duration-300">
+          <div className="absolute bottom-[-15px] md:bottom-[-20px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-full max-w-full overflow-hidden">
+            <div className={`flex justify-center -space-x-4 md:-space-x-8 lg:-space-x-4 px-4 pb-10 md:pb-12 hover:space-x-1 md:hover:space-x-2 transition-all duration-300 scale-[0.65] md:scale-100 origin-bottom`}>
                 {!isSpectator && room.players[myIndex]?.cards.map((c: CardData, i: number) => (
                   <Card 
                     key={`${c.suit}-${c.rank}`} 
@@ -573,83 +706,118 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
         </div>
 
         {/* Sidebar */}
-        <div className="w-72 flex flex-col gap-4">
-          <div className="bg-white/5 border border-white/10 rounded-[32px] p-5 flex flex-col h-full">
-            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-4">Match Progress</h3>
+        <div className={`
+          ${showStats ? 'fixed inset-0 z-50 bg-[#0a2e1f] p-4 flex flex-col lg:relative lg:inset-auto lg:z-0 lg:p-0' : 'hidden lg:flex'} 
+          w-full lg:w-72 flex flex-col gap-4 animate-in slide-in-from-right duration-300
+        `}>
+          {showStats && (
+            <div className="lg:hidden flex justify-between items-center mb-4">
+              <h2 className="text-lg font-black uppercase text-emerald-400">Match Details</h2>
+              <button onClick={() => setShowStats(false)} className="p-2 bg-white/5 rounded-full"><X size={20} /></button>
+            </div>
+          )}
+
+          <div className="bg-white/5 border border-white/10 rounded-[32px] p-5 flex flex-col flex-1 min-h-0">
+            <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-4 flex justify-between items-center">
+              Match Progress
+              <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">v1.2</span>
+            </h3>
             
-            <div className={`grid ${is2P ? 'grid-cols-2' : 'grid-cols-2'} text-center border-b border-white/10 pb-2 mb-4`}>
-              <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">{is2P ? (room.players[0]?.name || 'P1') : 'TEAM RED'}</div>
-              <div className="text-[10px] font-black text-orange-400 uppercase tracking-widest">{is2P ? (room.players[1]?.name || 'P2') : 'TEAM BLUE'}</div>
+            <div className={`grid grid-cols-2 text-center border-b border-white/10 pb-2 mb-4`}>
+              <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest truncate px-1">
+                {is2P ? (room.players[0]?.name || 'P1') : 'TEAM RED'}
+              </div>
+              <div className="text-[10px] font-black text-orange-400 uppercase tracking-widest truncate px-1">
+                {is2P ? (room.players[1]?.name || 'P2') : 'TEAM BLUE'}
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-                {/* Current Round Points */}
-                <div className="bg-white/5 rounded-2xl p-4 border border-white/5">
-                   <p className="text-[10px] font-black text-white/30 uppercase tracking-widest mb-3 text-center">Round Points</p>
-                   <div className="grid grid-cols-2 text-center text-xl font-mono font-black">
-                      <div className="text-emerald-400">{room.pointsThisRound[0]}</div>
-                      <div className="text-orange-400">{room.pointsThisRound[1]}</div>
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+                {/* Scoreboard Idea: Visual Progress Bar */}
+                <div className="bg-black/20 rounded-2xl p-4 border border-white/5">
+                   <div className="flex justify-between text-[8px] font-black text-white/30 uppercase mb-2">
+                      <span>Team Red</span>
+                      <span>Team Blue</span>
+                   </div>
+                   <div className="h-3 bg-white/5 rounded-full overflow-hidden flex border border-white/5">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(room.scores[0] / (room.mode === '2_PLAYER' ? 1200 : 660)) * 100}%` }}
+                        className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]"
+                      />
+                      <div className="w-px bg-white/20 h-full" />
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(room.scores[1] / (room.mode === '2_PLAYER' ? 1200 : 660)) * 100}%` }}
+                        className="h-full bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.4)] ml-auto"
+                      />
                    </div>
                 </div>
+
+                {/* Round Points */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-emerald-500/5 rounded-2xl p-3 border border-emerald-500/10 text-center">
+                    <p className="text-[8px] font-black text-emerald-500/60 uppercase mb-1">Round Pts</p>
+                    <p className="text-xl font-black text-emerald-400">{room.pointsThisRound[0]}</p>
+                  </div>
+                  <div className="bg-orange-500/5 rounded-2xl p-3 border border-orange-500/10 text-center">
+                    <p className="text-[8px] font-black text-orange-500/60 uppercase mb-1">Round Pts</p>
+                    <p className="text-xl font-black text-orange-400">{room.pointsThisRound[1]}</p>
+                  </div>
+                </div>
+
+                {/* Trick History (New Idea) */}
+                {room.trickHistory && room.trickHistory.length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-white/5">
+                    <p className="text-[9px] font-black text-white/20 uppercase tracking-widest mb-4">Round History</p>
+                    <div className="space-y-2">
+                      {room.trickHistory.map((trick: any, idx: number) => (
+                        <motion.div 
+                          initial={{ opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          key={idx} 
+                          className="flex items-center justify-between p-2.5 bg-black/30 rounded-xl border border-white/5 group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div className="flex -space-x-1.5 scale-75 origin-left">
+                              {trick.cards.map((c: any, cIdx: number) => (
+                                <div key={cIdx} className="w-6 h-8 bg-white/10 rounded-sm border border-white/20 flex items-center justify-center overflow-hidden">
+                                  <SuitIcon suit={c.suit} size={10} />
+                                </div>
+                              ))}
+                            </div>
+                            <span className="text-[10px] font-bold text-white/60 truncate max-w-[80px]">{trick.winnerName}</span>
+                          </div>
+                          <span className="text-[10px] font-black text-yellow-500">+{trick.points}</span>
+                        </motion.div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-2 text-center">
                   <div className="flex flex-col">
-                    <span className="text-[10px] text-white/40 font-black">TOTAL SCORE</span>
-                    <span className="text-3xl font-black text-emerald-400">{room.scores[0]}</span>
+                    <span className="text-[8px] text-white/40 font-black">TOTAL SCORE</span>
+                    <span className="text-2xl font-black text-emerald-400">{room.scores[0]}</span>
                   </div>
                   <div className="flex flex-col border-l border-white/10">
-                    <span className="text-[10px] text-white/40 font-black">TOTAL SCORE</span>
-                    <span className="text-3xl font-black text-orange-400">{room.scores[1]}</span>
+                    <span className="text-[8px] text-white/40 font-black">TOTAL SCORE</span>
+                    <span className="text-2xl font-black text-orange-400">{room.scores[1]}</span>
                   </div>
                 </div>
-
-                <div className="mt-6 bg-yellow-500/10 border border-yellow-500/20 p-4 rounded-2xl">
-                  <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-1">Target Score</p>
-                  <div className="flex justify-between items-end">
-                    <span className="text-2xl font-black">{room.mode === '2_PLAYER' ? 1200 : 660}</span>
-                    <span className="text-[10px] text-white/60 font-bold uppercase mb-1">To win</span>
-                  </div>
-                </div>
-
-                <div className="mt-6 p-4 bg-white/5 rounded-2xl border border-white/5">
-                   <p className="text-[10px] font-black text-white/30 uppercase tracking-widest mb-3">Session Stats</p>
-                   <div className="grid grid-cols-2 gap-4">
-                      <div>
-                         <p className="text-[9px] font-bold text-white/40 uppercase">Rounds</p>
-                         <p className="text-lg font-black">{room.roundCount}</p>
-                      </div>
-                      <div>
-                         <p className="text-[9px] font-bold text-white/40 uppercase">Mode</p>
-                         <p className="text-sm font-black">{room.mode.split('_')[0]}P</p>
-                      </div>
-                   </div>
-                </div>
-
-                {room.spectators && room.spectators.length > 0 && (
-                   <div className="mt-6">
-                      <p className="text-[10px] font-black text-white/30 uppercase tracking-widest mb-2 px-1">Spectators ({room.spectators.length})</p>
-                      <div className="flex flex-wrap gap-2 px-1">
-                         {room.spectators.map((s: any) => (
-                            <div key={s.id} className="w-8 h-8 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-lg" title={s.name}>
-                               {s.avatar || '🧔'}
-                            </div>
-                         ))}
-                      </div>
-                   </div>
-                )}
             </div>
           </div>
 
           <div className="bg-black/40 rounded-[32px] p-5 border border-white/5">
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-white/40 mb-3">Live Status</h4>
-            <div className="space-y-3">
-               <div className="flex items-center gap-3">
-                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-[10px] font-bold text-white/70 uppercase">Round {room.roundCount} in progress</span>
+            <h4 className="text-[9px] font-black uppercase tracking-widest text-white/40 mb-3">Live Session</h4>
+            <div className="grid grid-cols-2 gap-3">
+               <div className="p-3 bg-white/5 rounded-xl border border-white/5 text-center">
+                  <p className="text-[8px] font-black text-white/30 uppercase mb-1">Round</p>
+                  <p className="text-sm font-bold text-emerald-400">#{room.roundCount}</p>
                </div>
-               <div className="p-3 bg-white/5 rounded-xl border border-white/5">
-                  <p className="text-[9px] font-black text-white/30 uppercase mb-1">Dealer Pos</p>
-                  <p className="text-xs font-bold">{room.players[room.dealerIndex]?.name || '...'}</p>
+               <div className="p-3 bg-white/5 rounded-xl border border-white/5 text-center">
+                  <p className="text-[8px] font-black text-white/30 uppercase mb-1">Mode</p>
+                  <p className="text-sm font-bold">{room.mode.split('_')[0]}P</p>
                </div>
             </div>
           </div>
@@ -663,8 +831,8 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
       />
 
       {/* Quick Reactions Bar */}
-      {!isSpectator && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-black/40 backdrop-blur-md px-4 py-2 rounded-full border border-white/10 flex gap-2">
+      {!isSpectator && showEmojiBar && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-black/60 backdrop-blur-xl px-5 py-3 rounded-full border border-white/20 flex gap-4 shadow-2xl shadow-black/40">
             {['👋', '😂', '🔥', '🤔', '👍', '👎', '🤞'].map(emoji => (
                 <button 
                   key={emoji}
@@ -773,8 +941,8 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                         return (
                             <div className="p-5 bg-emerald-500/10 border border-emerald-500/20 rounded-3xl">
                                 <div className="flex items-center gap-4 mb-4">
-                                    <div className="w-12 h-12 rounded-full bg-emerald-500 flex items-center justify-center text-black text-xl">
-                                        {room.players.find((p:any) => p.name === playerName)?.avatar || '🧔'}
+                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-black text-xl relative overflow-hidden border-2 border-emerald-500/20`}>
+                                        <PlayerAvatar avatar={room.players.find((p:any) => p.name === playerName)?.avatar || '🧔'} />
                                     </div>
                                     <div>
                                         <p className="text-xs font-black uppercase tracking-widest text-emerald-500">Player Profile</p>
@@ -832,6 +1000,40 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                         </div>
                     </div>
 
+                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
+                        <label className="block text-[10px] font-black uppercase text-white/40 mb-1 ml-1 px-1">Emoji & Reactions</label>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <span className={`text-lg ${showEmojiBar ? 'opacity-100' : 'opacity-40 grayscale'}`}>🍭</span>
+                                <span className="text-sm font-bold">Quick Emoji Bar</span>
+                            </div>
+                            <button 
+                                onClick={() => setShowEmojiBar(!showEmojiBar)}
+                                className={`w-12 h-6 rounded-full relative transition-colors ${showEmojiBar ? 'bg-emerald-500' : 'bg-white/10'}`}
+                            >
+                                <motion.div 
+                                    animate={{ x: showEmojiBar ? 24 : 4 }}
+                                    className="absolute top-1 w-4 h-4 bg-white rounded-full" 
+                                />
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <span className={`text-lg ${showReactions ? 'opacity-100' : 'opacity-40 grayscale'}`}>💬</span>
+                                <span className="text-sm font-bold">Player Reaction Bubbles</span>
+                            </div>
+                            <button 
+                                onClick={() => setShowReactions(!showReactions)}
+                                className={`w-12 h-6 rounded-full relative transition-colors ${showReactions ? 'bg-emerald-500' : 'bg-white/10'}`}
+                            >
+                                <motion.div 
+                                    animate={{ x: showReactions ? 24 : 4 }}
+                                    className="absolute top-1 w-4 h-4 bg-white rounded-full" 
+                                />
+                            </button>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                         <button 
                             onClick={handleResign}
@@ -866,7 +1068,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
                     <div className="p-5 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl text-center">
                         <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-1">Developer Info</p>
-                        <p className="text-xs font-bold text-white/80">Shelem Online v1.2.0 • DeepInk Team</p>
+                        <p className="text-xs font-bold text-white/80">Deep Shelem v1.2.6 • DeepInk Team</p>
                     </div>
                 </div>
             </Modal>
@@ -886,7 +1088,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
            </div>
         </div>
         <div className="text-[10px] font-black uppercase tracking-[0.2em]">
-          Shelem Online v1.0.0 • Built with ❤️
+          Deep Shelem v1.2 • DeepInk Team
         </div>
       </footer>
     </div>
@@ -909,7 +1111,7 @@ function Modal({ title, children, onClose }: any) {
                 className="relative bg-[#14452f] border border-white/10 rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden"
             >
                 <div className="px-8 py-6 border-b border-white/5 flex justify-between items-center">
-                    <h2 className="text-xl font-black uppercase tracking-widest text-emerald-400">{title}</h2>
+                    <h2 className="text-xl font-black uppercase tracking-widest text-yellow-500">{title}</h2>
                     <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-all text-white/40">
                         <X size={24} />
                     </button>
@@ -922,17 +1124,17 @@ function Modal({ title, children, onClose }: any) {
     );
 }
 
-function SuitIcon({ suit }: { suit: Suit }) {
-    const icons = {
-        SPADES: <Spade size={14} className="fill-slate-900" />,
-        HEARTS: <Heart size={14} className="fill-rose-600 border-none text-rose-600" />,
-        DIAMONDS: <Diamond size={14} className="fill-rose-600 border-none text-rose-600" />,
-        CLUBS: <Club size={14} className="fill-slate-900" />,
-      };
-      return <span>{icons[suit]}</span>;
+function SuitIcon({ suit, size = 14 }: { suit: Suit; size?: number }) {
+  const icons = {
+    SPADES: <Spade size={size} className="fill-slate-900 text-slate-900" />,
+    HEARTS: <Heart size={size} className="fill-rose-600 text-rose-600 shadow-sm" />,
+    DIAMONDS: <Diamond size={size} className="fill-rose-600 text-rose-600 shadow-sm" />,
+    CLUBS: <Club size={size} className="fill-slate-900 text-slate-900" />,
+  };
+  return <div className="inline-flex items-center justify-center p-0.5 rounded-sm overflow-visible">{icons[suit]}</div>;
 }
 
-function BiddingOverlay({ room, isMyTurn, onBid }: any) {
+function BiddingOverlay({ room, isMyTurn, onBid, isLoading }: any) {
     const bids = [];
     for(let i=100; i<=165; i+=5) bids.push(i);
 
@@ -956,7 +1158,9 @@ function BiddingOverlay({ room, isMyTurn, onBid }: any) {
                             return (
                                 <div key={p.id} className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isCurrent ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'bg-black/20 border-white/5 text-white/40'}`}>
                                     <div className="flex items-center gap-2">
-                                        <span className="text-sm">{p.avatar || '🧔'}</span>
+                                        <div className="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center bg-black/40 text-[10px]">
+                                            <PlayerAvatar avatar={p.avatar || '🧔'} />
+                                        </div>
                                         <span className={`text-[10px] font-black uppercase tracking-widest truncate max-w-[80px]`}>{p.name}</span>
                                     </div>
                                     <span className={`text-xs font-black ${bid === 'PASS' ? 'text-red-500/50' : bid ? 'text-yellow-500' : 'opacity-20'}`}>
@@ -980,43 +1184,51 @@ function BiddingOverlay({ room, isMyTurn, onBid }: any) {
                     <p className="text-[10px] font-black text-white/20 uppercase tracking-widest px-1">Select Bid</p>
                     <div className="h-[280px] overflow-y-auto custom-scrollbar pr-2 flex flex-col gap-2">
                         {bids.filter(b => b > room.highestBid.value).map(b => (
-                            <button
-                                key={b}
-                                disabled={!isMyTurn}
-                                onClick={() => onBid(b)}
-                                className={`
-                                    w-full py-3 rounded-xl border-2 transition-all font-black text-sm
-                                    ${isMyTurn ? 'bg-white/5 border-white/5 text-white hover:bg-emerald-500 hover:border-emerald-400 hover:text-black hover:scale-105 active:scale-95' : 'bg-white/5 border-transparent text-white/10 opacity-50 cursor-not-allowed'}
-                                `}
-                            >
-                                {b}
-                            </button>
-                        ))}
-                        {isMyTurn && bids.filter(b => b > room.highestBid.value).length === 0 && (
-                            <p className="text-[10px] text-white/40 text-center italic mt-4">Highest possible bid reached</p>
-                        )}
-                    </div>
-
-                    <button
-                        disabled={!isMyTurn}
-                        onClick={() => onBid('PASS')}
-                        className={`
-                            w-full py-4 mt-2 rounded-2xl font-black uppercase tracking-widest transition-all border-2
-                            ${isMyTurn ? 'bg-red-500/10 border-red-500/10 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-white/5 border-transparent text-white/10 opacity-50 cursor-not-allowed'}
-                        `}
-                    >
-                        Pass
-                    </button>
+                                <button
+                                    key={b}
+                                    disabled={!isMyTurn || isLoading}
+                                    onClick={() => onBid(b)}
+                                    className={`
+                                        w-full py-3 rounded-xl border-2 transition-all font-black text-sm relative overflow-hidden
+                                        ${isMyTurn ? 'bg-white/5 border-white/5 text-white hover:bg-emerald-500 hover:border-emerald-400 hover:text-black hover:scale-105 active:scale-95' : 'bg-white/5 border-transparent text-white/10 opacity-50 cursor-not-allowed'}
+                                        ${isLoading ? 'opacity-70' : ''}
+                                    `}
+                                >
+                                    {b}
+                                    {isLoading && (
+                                        <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                        </div>
+                                    )}
+                                </button>
+                            ))}
+                            {isMyTurn && bids.filter(b => b > room.highestBid.value).length === 0 && (
+                                <p className="text-[10px] text-white/40 text-center italic mt-4">Highest possible bid reached</p>
+                            )}
+                        </div>
+    
+                        <button
+                            disabled={!isMyTurn || isLoading}
+                            onClick={() => onBid('PASS')}
+                            className={`
+                                w-full py-4 mt-2 rounded-2xl font-black uppercase tracking-widest transition-all border-2 relative overflow-hidden
+                                ${isMyTurn ? 'bg-red-500/10 border-red-500/10 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-white/5 border-transparent text-white/10 opacity-50 cursor-not-allowed'}
+                            `}
+                        >
+                            {isLoading ? '...' : 'Pass'}
+                        </button>
                 </div>
             </div>
         </div>
     );
 }
 
-function DiscardOverlay({ selectedCount, onConfirm }: any) {
+function DiscardOverlay({ selectedCards, onConfirm, isLoading }: any) {
     const [suit, setSuit] = useState<Suit | null>(null);
+    const selectedCount = selectedCards.length;
+    
     return (
-        <div className="bg-[#14452f]/95 backdrop-blur-2xl p-8 rounded-[40px] border border-white/10 shadow-2xl w-[400px]">
+        <div className="bg-[#14452f]/95 backdrop-blur-2xl p-8 rounded-[40px] border border-white/10 shadow-2xl w-[440px]">
              <h2 className="text-center text-[10px] font-black uppercase tracking-[0.2em] mb-6 text-yellow-500">
                 PICK TRUMP & DISCARD 4
             </h2>
@@ -1028,37 +1240,56 @@ function DiscardOverlay({ selectedCount, onConfirm }: any) {
                         {(['SPADES', 'HEARTS', 'DIAMONDS', 'CLUBS'] as Suit[]).map(s => (
                             <button
                                 key={s}
+                                disabled={isLoading}
                                 onClick={() => setSuit(s)}
                                 className={`
                                     aspect-square rounded-2xl flex items-center justify-center transition-all border-2
                                     ${suit === s ? 'bg-emerald-500 border-white text-black rotate-12 scale-110 shadow-lg shadow-emerald-500/20' : 'bg-white/5 border-transparent text-white/40 hover:bg-white/10'}
                                 `}
                             >
-                                <SuitIcon suit={s} />
+                                <SuitIcon suit={s} size={20} />
                             </button>
                         ))}
                      </div>
                 </div>
 
-                <div className="text-center">
-                    <p className="text-[10px] uppercase font-bold text-white/30 mb-2">Selected Cards</p>
-                    <div className="flex justify-center gap-1">
-                        {[1,2,3,4].map(i => (
-                            <div key={i} className={`w-8 h-1.5 rounded-full ${selectedCount >= i ? 'bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.4)]' : 'bg-black/20'}`} />
+                <div className="bg-black/20 p-6 rounded-3xl border border-white/5">
+                    <p className="text-center text-[10px] uppercase font-bold text-white/30 mb-4">Cards to Discard ({selectedCount}/4)</p>
+                    <div className="flex justify-center gap-2 h-16 items-center">
+                        {selectedCards.map((c: any, i: number) => (
+                            <motion.div 
+                                key={`${c.suit}-${c.rank}`}
+                                initial={{ scale: 0, rotate: -10 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                className="relative"
+                            >
+                                <Card card={c} small disabled />
+                            </motion.div>
+                        ))}
+                        {Array.from({ length: 4 - selectedCount }).map((_, i) => (
+                            <div key={`empty-${i}`} className="w-10 h-16 rounded-lg border-2 border-dashed border-white/10 flex items-center justify-center">
+                                <span className="text-white/10 text-[8px] font-black">?</span>
+                            </div>
                         ))}
                     </div>
                 </div>
 
                 <button
-                    disabled={selectedCount !== 4 || !suit}
-                    onClick={() => onConfirm(suit)}
+                    disabled={selectedCount !== 4 || !suit || isLoading}
+                    onClick={() => onConfirm(suit!)}
                     className={`
-                        w-full py-5 rounded-2xl font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2
-                        ${selectedCount === 4 && suit ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20' : 'bg-white/5 text-white/10 cursor-not-allowed'}
+                        w-full py-5 rounded-2xl font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 relative overflow-hidden
+                        ${selectedCount === 4 && suit ? 'bg-yellow-500 text-black shadow-lg shadow-yellow-500/20 hover:scale-[1.02] active:scale-95' : 'bg-white/5 text-white/10 cursor-not-allowed'}
                     `}
                 >
-                    <CheckCircle2 size={20} />
-                    Confirm Action
+                    {isLoading ? (
+                        <div className="w-6 h-6 border-4 border-black/20 border-t-black rounded-full animate-spin" />
+                    ) : (
+                        <>
+                            <CheckCircle2 size={20} />
+                            Confirm Discard
+                        </>
+                    )}
                 </button>
             </div>
         </div>

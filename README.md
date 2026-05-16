@@ -1,20 +1,21 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Deep Shelem
 
-# Run and deploy your AI Studio app
+A professional, real-time multiplayer implementation of the classic Iranian card game "Shelem". This application features a polished UI, smooth animations, and strategic gameplay for 2 and 4 players.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/86e203db-0f6a-44b6-b3fc-eaa6922f59b1
+- **Real-time Multiplayer**: Powered by Socket.io for instant card play and interactions.
+- **Responsive Design**: Optimized for all screen sizes, from mobile phones to high-resolution desktops.
+- **Advanced Match Progress**: Track current round points, total scores, and a detailed trick history.
+- **Customizable Experience**: Toggle quick emoji bars, reaction bubbles, and sound effects.
+- **Automated Dealing**: Complex shuffle-and-deal logic ensuring fair play and adherence to traditional rules.
+- **2-Player & 4-Player Modes**: Unique mechanics for head-to-head play including ground piles.
 
-## Run Locally
+## Tech Stack
 
-**Prerequisites:**  Node.js
+- **Frontend**: React, Vite, Tailwind CSS, Motion (framer-motion)
+- **Backend**: Node.js, Express, Socket.io
+- **Styling**: Modern dark-themed UI with emerald and gold accents.
 
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### Developed by
+**DeepInk Team**
