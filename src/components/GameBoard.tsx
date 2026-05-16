@@ -3,7 +3,7 @@ import type { Socket } from 'socket.io-client';
 import { motion, AnimatePresence } from 'motion/react';
 import Card, { CardData, Suit } from './Card';
 import Chat from './Chat';
-import { Users, Info, Settings, HelpCircle, CheckCircle2, X, Volume2, VolumeX, Eye, LogOut, Flag, Crown } from 'lucide-react';
+import { Users, Info, Settings, HelpCircle, CheckCircle2, X, Volume2, VolumeX, Eye, LogOut, Flag, Crown, Copy } from 'lucide-react';
 
 interface GameBoardProps {
   room: any;
@@ -235,6 +235,14 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
     window.location.reload(); // Simple way to exit and return to lobby for now
   };
 
+  const handleLogout = () => {
+    if (window.confirm('Are you sure you want to logout?')) {
+      localStorage.removeItem('deep_shelem_user');
+      localStorage.removeItem('shelem_last_room');
+      window.location.reload();
+    }
+  };
+
   const isMyTurn = !isSpectator && room.currentTurn === myIndex;
 
   const getPossiblePlays = () => {
@@ -358,9 +366,19 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
         </div>
         
         <div className="flex items-center gap-2 md:gap-4">
-          <div className="bg-white/10 px-3 md:px-4 py-1.5 md:py-2 rounded-full border border-white/20 flex items-center gap-2">
+          <div className="bg-white/10 px-3 md:px-4 py-1.5 md:py-2 rounded-full border border-white/20 flex items-center gap-2 group relative">
             <span className="hidden xs:block text-[8px] md:text-[10px] font-bold opacity-70 tracking-widest uppercase">Room:</span>
             <span className="text-sm md:text-lg font-mono font-bold tracking-widest text-yellow-400">{room.id}</span>
+            <button 
+                onClick={() => {
+                    navigator.clipboard.writeText(room.id);
+                    alert('Room ID copied to clipboard!');
+                }}
+                className="ml-1 p-1 hover:bg-white/10 rounded-md transition-all text-white/20 hover:text-emerald-400"
+                title="Copy Room ID"
+            >
+                <div className="scale-75"><Copy size={14} /></div>
+            </button>
           </div>
           <div className="flex gap-1 md:gap-2">
             <button 
@@ -1107,22 +1125,31 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="pt-2 border-t border-white/5 space-y-3">
                         <button 
                             onClick={handleResign}
                             disabled={isSpectator || room.phase === 'LOBBY' || room.phase === 'GAME_OVER'}
-                            className="flex items-center justify-center gap-3 py-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-2xl font-black uppercase tracking-widest transition-all border border-rose-500/20 disabled:opacity-30"
+                            className="w-full flex items-center justify-center gap-3 py-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-2xl font-black uppercase tracking-widest transition-all border border-rose-500/20 disabled:opacity-30"
                         >
                             <Flag size={18} />
-                            Resign
+                            Resign Match
                         </button>
-                        <button 
-                            onClick={handleExit}
-                            className="flex items-center justify-center gap-3 py-4 bg-white/5 hover:bg-white/10 text-white/60 rounded-2xl font-black uppercase tracking-widest transition-all border border-white/10"
-                        >
-                            <LogOut size={18} />
-                            Exit
-                        </button>
+                        <div className="grid grid-cols-2 gap-3">
+                            <button 
+                                onClick={handleExit}
+                                className="flex items-center justify-center gap-3 py-4 bg-white/5 hover:bg-white/10 text-white/60 rounded-2xl font-black uppercase tracking-widest transition-all border border-white/10"
+                            >
+                                <X size={18} />
+                                Exit Room
+                            </button>
+                            <button 
+                                onClick={handleLogout}
+                                className="flex items-center justify-center gap-3 py-4 bg-white/5 hover:bg-white/10 text-rose-400 rounded-2xl font-black uppercase tracking-widest transition-all border border-white/10"
+                            >
+                                <LogOut size={18} />
+                                Logout
+                            </button>
+                        </div>
                     </div>
 
                     <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
@@ -1161,7 +1188,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
            </div>
         </div>
         <div className="text-[10px] font-black uppercase tracking-[0.2em]">
-          Deep Shelem v1.2 • DeepInk Team
+          Deep Shelem v1.2.6 • DeepInk Team
         </div>
       </footer>
     </div>

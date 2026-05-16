@@ -49,11 +49,22 @@ function saveGameResult(result: any) {
 }
 
 function getUsers() {
-  return JSON.parse(fs.readFileSync(USERS_DB, 'utf-8')).users;
+  try {
+    if (!fs.existsSync(USERS_DB)) return [];
+    const data = JSON.parse(fs.readFileSync(USERS_DB, 'utf-8'));
+    return Array.isArray(data.users) ? data.users : [];
+  } catch (err) {
+    console.error('Error reading users database:', err);
+    return [];
+  }
 }
 
 function saveUsers(users: any[]) {
-  fs.writeFileSync(USERS_DB, JSON.stringify({ users }, null, 2));
+  try {
+    fs.writeFileSync(USERS_DB, JSON.stringify({ users: Array.isArray(users) ? users : [] }, null, 2));
+  } catch (err) {
+    console.error('Error saving users database:', err);
+  }
 }
 
 // Game Types
@@ -116,50 +127,65 @@ async function startServer() {
 
   // Auth & Upload Endpoints
   app.post('/api/register', async (req, res) => {
-    const { username, password } = req.body;
-    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
-    
-    const users = getUsers();
-    if (users.find((u: any) => u.username === username)) {
-      return res.status(400).json({ error: 'Username already exists' });
-    }
+    try {
+      const { username, password } = req.body;
+      if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+      
+      const users = getUsers();
+      if (users.find((u: any) => u.username === username)) {
+        return res.status(400).json({ error: 'Username already exists' });
+      }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = { id: nanoid(), username, password: hashedPassword, avatar: null };
-    users.push(newUser);
-    saveUsers(users);
-    res.json({ message: 'User registered', userId: newUser.id });
+      const hashedPassword = await bcrypt.hash(password, 10);
+      const newUser = { id: nanoid(), username, password: hashedPassword, avatar: null };
+      users.push(newUser);
+      saveUsers(users);
+      res.json({ message: 'User registered', userId: newUser.id });
+    } catch (err) {
+      console.error('Register error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   app.post('/api/login', async (req, res) => {
-    const { username, password } = req.body;
-    const users = getUsers();
-    const user = users.find((u: any) => u.username === username);
-    
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    try {
+      const { username, password } = req.body;
+      const users = getUsers();
+      const user = users.find((u: any) => u.username === username);
+      
+      if (!user || !(await bcrypt.compare(password, user.password))) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
 
-    res.json({ 
-      id: user.id, 
-      username: user.username, 
-      avatar: user.avatar 
-    });
+      res.json({ 
+        id: user.id, 
+        username: user.username, 
+        avatar: user.avatar 
+      });
+    } catch (err) {
+      console.error('Login error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
   });
 
   app.post('/api/upload-avatar', upload.single('avatar'), (req, res) => {
-    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const { userId } = req.body;
-    const users = getUsers();
-    const user = users.find((u: any) => u.id === userId);
-    
-    if (user) {
-      const avatarUrl = `/Images/${req.file.filename}`;
-      user.avatar = avatarUrl;
-      saveUsers(users);
-      res.json({ avatar: avatarUrl });
-    } else {
-      res.status(404).json({ error: 'User not found' });
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      const { userId } = req.body;
+      const users = getUsers();
+      const user = users.find((u: any) => u.id === userId);
+      
+      if (user) {
+        const avatarUrl = `/Images/${req.file.filename}`;
+        user.avatar = avatarUrl;
+        saveUsers(users);
+        res.json({ avatar: avatarUrl });
+      } else {
+        res.status(404).json({ error: 'User not found' });
+      }
+    } catch (err) {
+      console.error('Upload error:', err);
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 

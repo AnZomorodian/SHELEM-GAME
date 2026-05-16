@@ -298,7 +298,7 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
           Team Red vs Team Blue • Classic Card Game
         </p>
         <p className="text-[10px] text-emerald-500 font-black mt-4 uppercase tracking-[0.2em]">
-          Deep Shelem v1.2 • DeepInk Team
+          Deep Shelem v1.2.6 • DeepInk Team
         </p>
       </div>
     </div>
