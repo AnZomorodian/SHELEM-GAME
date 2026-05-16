@@ -56,6 +56,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   const [showPossiblePlays, setShowPossiblePlays] = useState(true);
   const [showReactions, setShowReactions] = useState(true);
   const [showEmojiBar, setShowEmojiBar] = useState(true);
+  const [showChat, setShowChat] = useState(() => localStorage.getItem('shelem_show_chat') !== 'false');
   const [selectedFont, setSelectedFont] = useState(() => localStorage.getItem('shelem_font') || '"Inter", sans-serif');
   const [selectedTheme, setSelectedTheme] = useState(() => localStorage.getItem('shelem_theme') || 'emerald');
   const [resignRequest, setResignRequest] = useState<any>(null);
@@ -71,6 +72,10 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
     localStorage.setItem('shelem_theme', selectedTheme);
     document.body.setAttribute('data-theme', selectedTheme);
   }, [selectedTheme]);
+
+  useEffect(() => {
+    localStorage.setItem('shelem_show_chat', String(showChat));
+  }, [showChat]);
 
   useEffect(() => {
     setIsActionLoading(false);
@@ -356,28 +361,28 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
       }}
     >
       {/* Header */}
-      <header className="bg-black/30 backdrop-blur-md px-4 md:px-6 py-3 md:py-4 flex justify-between items-center border-b border-white/10 shrink-0">
+      <header className="bg-black/30 backdrop-blur-md px-3 md:px-6 py-2 md:py-4 flex justify-between items-center border-b border-white/10 shrink-0 z-50">
         <div className="flex items-center gap-2 md:gap-4">
-          <div className="w-8 h-8 md:w-10 md:h-10 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-black text-xl md:text-2xl shadow-lg shadow-yellow-500/20">S</div>
+          <div className="w-7 h-7 md:w-10 md:h-10 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-black text-lg md:text-2xl shadow-lg shadow-yellow-500/20">S</div>
           <div>
-            <h1 className="text-base md:text-xl font-black tracking-tighter uppercase leading-none">Deep Shelem</h1>
-            <p className="hidden sm:block text-[10px] text-yellow-500 font-bold uppercase tracking-widest">Classic Iranian Card Game</p>
+            <h1 className="text-sm md:text-xl font-black tracking-tighter uppercase leading-none">Deep Shelem</h1>
+            <p className="hidden md:block text-[10px] text-yellow-500 font-bold uppercase tracking-widest">Classic Iranian Card Game</p>
           </div>
         </div>
         
         <div className="flex items-center gap-2 md:gap-4">
-          <div className="bg-white/10 px-3 md:px-4 py-1.5 md:py-2 rounded-full border border-white/20 flex items-center gap-2 group relative">
-            <span className="hidden xs:block text-[8px] md:text-[10px] font-bold opacity-70 tracking-widest uppercase">Room:</span>
-            <span className="text-sm md:text-lg font-mono font-bold tracking-widest text-yellow-400">{room.id}</span>
+          <div className="bg-white/10 px-2.5 md:px-4 py-1 md:py-2 rounded-full border border-white/20 flex items-center gap-1.5 md:gap-2 group relative">
+            <span className="hidden sm:block text-[8px] md:text-[10px] font-bold opacity-70 tracking-widest uppercase">Room:</span>
+            <span className="text-xs md:text-lg font-mono font-bold tracking-widest text-yellow-400">{room.id}</span>
             <button 
                 onClick={() => {
                     navigator.clipboard.writeText(room.id);
                     alert('Room ID copied to clipboard!');
                 }}
-                className="ml-1 p-1 hover:bg-white/10 rounded-md transition-all text-white/20 hover:text-emerald-400"
+                className="p-1 hover:bg-white/10 rounded-md transition-all text-white/20 hover:text-emerald-400"
                 title="Copy Room ID"
             >
-                <div className="scale-75"><Copy size={14} /></div>
+                <div className="scale-75"><Copy size={12} /></div>
             </button>
           </div>
           <div className="flex gap-1 md:gap-2">
@@ -426,29 +431,6 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
             {/* Table Surface Reflection */}
             <div className="absolute inset-0 bg-gradient-to-b from-white/5 to-transparent rounded-full blur-3xl opacity-20 pointer-events-none" />
             
-            {/* Current Trick Indicators */}
-            {room.currentTrick.length > 0 && (
-              <div className="absolute top-[-70px] left-1/2 -translate-x-1/2 pointer-events-none z-[45] w-fit">
-                <motion.div 
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-black/60 backdrop-blur-xl px-4 py-1.5 rounded-xl border border-white/10 flex items-center gap-3 shadow-2xl whitespace-nowrap"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-[7px] text-white/40 uppercase font-black tracking-widest">Lead</span>
-                    <SuitIcon suit={room.currentTrick[0].card.suit} size={10} />
-                  </div>
-                  <div className="w-px h-4 bg-white/10" />
-                  <div className="flex items-center gap-2">
-                    <span className="text-[7px] text-white/40 uppercase font-black tracking-widest">Winning</span>
-                    <span className="text-[10px] font-black text-emerald-400">
-                      {room.players.find((p:any) => p.id === getCurrentWinner())?.name || '...'}
-                    </span>
-                  </div>
-                </motion.div>
-              </div>
-            )}
-
             <AnimatePresence>
               {room.currentTrick.map((trick: any, i: number) => {
                 const pIdx = room.players.findIndex((p: any) => p.id === trick.playerId);
@@ -489,10 +471,10 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                         rotate: angles[pos]
                     }}
                     animate={{ 
-                      scale: 1, 
+                      scale: 1.1, 
                       opacity: 1,
-                      y: pos === 0 ? 45 : pos === 2 ? -45 : 0,
-                      x: pos === 3 ? -45 : pos === 1 ? 45 : 0,
+                      y: pos === 0 ? 60 : pos === 2 ? -60 : 0,
+                      x: pos === 3 ? -60 : pos === 1 ? 60 : 0,
                       rotate: angles[pos] + (Math.random() * 8 - 4) + (trick.fromPile ? 5 : -5)
                     }}
                     transition={{ 
@@ -510,7 +492,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                     }}
                     className="absolute z-[40]"
                   >
-                    <Card card={trick.card} small layoutId={`card-${trick.card.suit}-${trick.card.rank}`} />
+                    <Card card={trick.card} layoutId={`card-${trick.card.suit}-${trick.card.rank}`} />
                   </motion.div>
                 );
               })}
@@ -888,11 +870,13 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
         </div>
       </main>
 
-      <Chat 
-        messages={room.messages || []} 
-        playerName={playerName} 
-        onSendMessage={handleSendMessage} 
-      />
+      {showChat && (
+        <Chat 
+          messages={room.messages || []} 
+          playerName={playerName} 
+          onSendMessage={handleSendMessage} 
+        />
+      )}
 
       {/* Quick Reactions Bar */}
       {!isSpectator && showEmojiBar && (
@@ -1118,6 +1102,21 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                         <label className="block text-[10px] font-black uppercase text-white/40 mb-1 ml-1 px-1">Emoji & Reactions</label>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
+                                <span className={`text-lg ${showChat ? 'opacity-100' : 'opacity-40 grayscale'}`}>💬</span>
+                                <span className="text-sm font-bold">Show Chat Box</span>
+                            </div>
+                            <button 
+                                onClick={() => setShowChat(!showChat)}
+                                className={`w-12 h-6 rounded-full relative transition-colors ${showChat ? 'bg-emerald-500' : 'bg-white/10'}`}
+                            >
+                                <motion.div 
+                                    animate={{ x: showChat ? 24 : 4 }}
+                                    className="absolute top-1 w-4 h-4 bg-white rounded-full" 
+                                />
+                            </button>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
                                 <span className={`text-lg ${showEmojiBar ? 'opacity-100' : 'opacity-40 grayscale'}`}>🍭</span>
                                 <span className="text-sm font-bold">Quick Emoji Bar</span>
                             </div>
@@ -1199,19 +1198,19 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
       </AnimatePresence>
 
       {/* Footer */}
-      <footer className="bg-black/50 border-t border-white/10 px-8 py-3 shrink-0 flex justify-between items-center text-white/40">
-        <div className="flex gap-8">
-           <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
-              <span className="text-[10px] font-black uppercase tracking-widest">Server Connected</span>
+      <footer className="bg-black/50 border-t border-white/10 px-4 md:px-8 py-2 md:py-3 shrink-0 flex justify-between items-center text-white/40">
+        <div className="flex gap-4 md:gap-8">
+           <div className="flex items-center gap-1.5 md:gap-2">
+              <div className="w-1.5 h-1.5 md:w-2 md:h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]"></div>
+              <span className="text-[8px] md:text-[10px] font-black uppercase tracking-widest">Live</span>
            </div>
-           <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-widest">Active Playing:</span>
-              <span className="text-[10px] font-black text-white/60 uppercase">{room.mode.replace('_', ' ')} SHELEM</span>
+           <div className="hidden xs:flex items-center gap-2">
+              <span className="text-[8px] md:text-[10px] font-bold uppercase tracking-widest opacity-60">Mode:</span>
+              <span className="text-[8px] md:text-[10px] font-black text-white/60 uppercase">{room.mode.replace('_', ' ')}</span>
            </div>
         </div>
-        <div className="text-[10px] font-black uppercase tracking-[0.2em]">
-          Deep Shelem v1.2.6 • DeepInk Team
+        <div className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.1em] md:tracking-[0.2em] opacity-60">
+          Deep Shelem v1.2.6
         </div>
       </footer>
     </div>

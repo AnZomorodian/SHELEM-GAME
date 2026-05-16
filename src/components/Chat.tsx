@@ -26,9 +26,9 @@ export default function Chat({ messages, playerName, onSendMessage }: ChatProps)
   };
 
   return (
-    <div className={`fixed bottom-6 right-6 z-50 transition-all duration-500 flex flex-col items-end ${isOpen ? 'w-80 h-[400px]' : 'w-12 h-12'}`}>
+    <div className={`fixed bottom-6 right-6 z-50 transition-all duration-500 flex flex-col items-end ${isOpen ? 'w-[calc(100vw-3rem)] sm:w-80 h-[400px]' : 'w-12 h-12'}`}>
       {isOpen && (
-        <div className="w-full h-full bg-[#14452f]/95 backdrop-blur-2xl rounded-[32px] border border-white/10 shadow-2xl flex flex-col overflow-hidden mb-4">
+        <div className="w-full h-full bg-[#14452f]/95 backdrop-blur-2xl rounded-[32px] border border-white/10 shadow-2xl flex flex-col overflow-hidden mb-4 animate-in slide-in-from-bottom-5 duration-300">
           <div className="flex items-center justify-between p-4 border-bottom border-white/5 bg-black/20">
             <h3 className="text-[10px] font-black uppercase tracking-widest text-white/40">Game Chat</h3>
             <button onClick={() => setIsOpen(false)} className="text-white/40 hover:text-white">✕</button>
