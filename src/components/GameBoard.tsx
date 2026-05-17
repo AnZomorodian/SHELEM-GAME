@@ -59,6 +59,8 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   const [showChat, setShowChat] = useState(() => localStorage.getItem('shelem_show_chat') !== 'false');
   const [selectedFont, setSelectedFont] = useState(() => localStorage.getItem('shelem_font') || '"Inter", sans-serif');
   const [selectedTheme, setSelectedTheme] = useState(() => localStorage.getItem('shelem_theme') || 'emerald');
+  const [cardBack, setCardBack] = useState(() => localStorage.getItem('shelem_card_back') || 'classic');
+  const [tableFinish, setTableFinish] = useState(() => localStorage.getItem('shelem_table_finish') || 'smooth');
   const [resignRequest, setResignRequest] = useState<any>(null);
   const [reactions, setReactions] = useState<{ [playerId: string]: string }>({});
   const [localStats, setLocalStats] = useState<any>({ wins: 0, losses: 0, games: 0 });
@@ -76,6 +78,14 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   useEffect(() => {
     localStorage.setItem('shelem_show_chat', String(showChat));
   }, [showChat]);
+
+  useEffect(() => {
+    localStorage.setItem('shelem_card_back', cardBack);
+  }, [cardBack]);
+
+  useEffect(() => {
+    localStorage.setItem('shelem_table_finish', tableFinish);
+  }, [tableFinish]);
 
   useEffect(() => {
     setIsActionLoading(false);
@@ -376,8 +386,20 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
             <span className="text-xs md:text-lg font-mono font-bold tracking-widest text-yellow-400">{room.id}</span>
             <button 
                 onClick={() => {
-                    navigator.clipboard.writeText(room.id);
-                    alert('Room ID copied to clipboard!');
+                    if (navigator.clipboard) {
+                      navigator.clipboard.writeText(room.id);
+                    } else {
+                      const textArea = document.createElement("textarea");
+                      textArea.value = room.id;
+                      document.body.appendChild(textArea);
+                      textArea.select();
+                      document.execCommand("copy");
+                      document.body.removeChild(textArea);
+                    }
+                    const btn = document.activeElement as HTMLElement;
+                    const originalText = btn.innerHTML;
+                    btn.innerHTML = '<span class="text-emerald-400 text-[10px]">COPIED!</span>';
+                    setTimeout(() => { btn.innerHTML = originalText; }, 2000);
                 }}
                 className="p-1 hover:bg-white/10 rounded-md transition-all text-white/20 hover:text-emerald-400"
                 title="Copy Room ID"
@@ -420,7 +442,25 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                 borderColor: 'var(--game-bg)'
             }}
         >
-          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/felt.png")' }} />
+          {/* Surface Textures */}
+          {tableFinish === 'smooth' && (
+            <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/felt.png")' }} />
+          )}
+          {tableFinish === 'leather' && (
+            <div className="absolute inset-0 opacity-20 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/leather.png")' }} />
+          )}
+          {tableFinish === 'wood' && (
+            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/wood-pattern.png")' }} />
+          )}
+          {tableFinish === 'felt' && (
+            <div className="absolute inset-0 opacity-40 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/felt.png")' }} />
+          )}
+          {tableFinish === 'granite' && (
+            <div className="absolute inset-0 opacity-30 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/dark-matter.png")' }} />
+          )}
+          {tableFinish === 'carbon' && (
+            <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/carbon-fibre.png")' }} />
+          )}
           
           {/* Decorative Felt Circle */}
           <div className="absolute w-[250px] h-[250px] md:w-[500px] md:h-[500px] rounded-full border border-white/5 opacity-20 pointer-events-none" />
@@ -717,9 +757,14 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                     )}
                   </div>
                 </div>
-                <p className={`mt-2 font-bold text-sm ${isTurn ? 'text-yellow-400' : 'text-white'}`}>
+            <div className="flex flex-col items-center">
+              <div className="flex items-center gap-2">
+                <p className={`font-bold text-sm ${isTurn ? 'text-yellow-400' : 'text-white'}`}>
                   {player.name} {(!isSpectator && player.id === room.players[myIndex]?.id) ? '(YOU)' : ''}
                 </p>
+                <span className="text-[8px] font-mono text-white/30 bg-black/30 px-1 rounded">#{player.id.slice(0, 4)}</span>
+              </div>
+            </div>
                 <div className={`
                   px-2 py-0.5 rounded text-[10px] font-bold mt-1 uppercase transition-colors
                   ${isTurn ? 'bg-yellow-500 text-black' : 'bg-black/40 text-white/60'}
@@ -779,6 +824,52 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+                {/* Individual Player Stats Card */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1 mb-2">Player Performances</p>
+                  {room.players.map((p: any) => {
+                    const winRate = p.stats?.games > 0 ? ((p.stats.wins / p.stats.games) * 100).toFixed(0) : 0;
+                    return (
+                      <div key={p.id} className="bg-white/5 rounded-2xl p-3 border border-white/5 flex items-center justify-between group hover:bg-white/10 transition-colors">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full overflow-hidden border border-white/20">
+                            <PlayerAvatar avatar={p.avatar || '🧔'} />
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-bold text-white leading-none mb-1">{p.name}</p>
+                            <p className="text-[8px] font-mono text-emerald-400 opacity-60">ID: {p.id.slice(0, 6)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 text-right">
+                          <div>
+                             <p className="text-[8px] text-white/40 uppercase font-black">Win Rate</p>
+                             <p className="text-[10px] font-black text-yellow-500">{winRate}%</p>
+                          </div>
+                          <div className="w-px h-6 bg-white/10" />
+                          <div>
+                             <p className="text-[8px] text-white/40 uppercase font-black">Games</p>
+                             <p className="text-[10px] font-black text-white">{p.stats?.games || 0}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Round Info Header */}
+                {room.hokm && (
+                   <div className="bg-black/40 rounded-2xl p-4 border border-white/5 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                         <SuitIcon suit={room.hokm} size={18} />
+                         <span className="text-[10px] font-black uppercase text-emerald-400">TRUMP</span>
+                      </div>
+                      <div className="text-right">
+                         <p className="text-[8px] text-white/40 uppercase font-bold">Goal Bid</p>
+                         <p className="text-sm font-black text-white">{room.highestBid.value}</p>
+                      </div>
+                   </div>
+                )}
+
                 {/* Scoreboard Idea: Visual Progress Bar */}
                 <div className="bg-black/20 rounded-2xl p-4 border border-white/5">
                    <div className="flex justify-between text-[8px] font-black text-white/30 uppercase mb-2">
@@ -926,271 +1017,158 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
       {/* Overlays */}
       <AnimatePresence>
         {showRules && (
-            <Modal title="Game Rules" onClose={() => setShowRules(false)}>
-                <div className="space-y-6 text-sm leading-relaxed text-white/80 h-[500px] overflow-y-auto custom-scrollbar pr-2">
-                    <section>
-                        <h3 className="text-emerald-400 font-black uppercase text-xs mb-2">Introduction</h3>
-                        <p>
-                            Shelem is a popular trick-taking card game. The goal is to reach a target score (660 for 4P, 1200 for 2P) by bidding and winning tricks containing point-cards.
-                        </p>
-                    </section>
+            <Modal title="Game Rules" onClose={() => setShowRules(false)} density="COMPACT">
+                <div className="grid grid-cols-2 gap-4 md:gap-6 text-[10px] md:text-sm leading-relaxed text-white/80">
+                    <div className="space-y-4">
+                      <section>
+                          <h3 className="text-emerald-400 font-black uppercase text-[10px] mb-1">Intro</h3>
+                          <p>Goal: Reach {room.mode === '2_PLAYER' ? '1200' : '660'} points by winning tricks with point-cards (5, 10, Ace).</p>
+                      </section>
 
-                    <section>
-                        <h3 className="text-yellow-500 font-black uppercase text-xs mb-2">Point Values</h3>
-                        <div className="grid grid-cols-2 gap-4 bg-white/5 p-4 rounded-2xl border border-white/5">
-                            <div>
-                                <p className="text-[10px] text-white/40 uppercase font-bold">Card Ranks</p>
-                                <ul className="mt-1 space-y-1">
-                                    <li><span className="text-yellow-500 font-bold">5</span> = 5 Points</li>
-                                    <li><span className="text-yellow-500 font-bold">10</span> = 10 Points</li>
-                                    <li><span className="text-yellow-500 font-bold">Ace</span> = 10 Points</li>
-                                </ul>
-                            </div>
-                            <div>
-                                <p className="text-[10px] text-white/40 uppercase font-bold">Total Points</p>
-                                <p className="mt-1">Total points in a deck: <span className="text-emerald-400 font-bold">165</span></p>
-                            </div>
-                        </div>
-                    </section>
+                      <section>
+                          <h3 className="text-yellow-500 font-black uppercase text-[10px] mb-1">Bidding</h3>
+                          <p>Starts at 100. Highest bidder (Hakam) picks Trump suit and gets 4 center cards.</p>
+                      </section>
 
-                    <section>
-                        <h3 className="text-emerald-400 font-black uppercase text-xs mb-2">Head-to-Head (2-Player Mode)</h3>
-                        <p>
-                            In 2-player mode, the "Ground" acts as a silent partner for both players.
-                        </p>
-                        <ul className="list-disc list-inside space-y-2 mt-2 ml-2">
-                            <li>Each player receives <span className="text-white font-bold">12 cards</span> in hand.</li>
-                            <li><span className="text-white font-bold">3 piles</span> of 4 cards are placed in front of each player.</li>
-                            <li>A trick consists of <span className="text-white font-bold">4 cards</span>: 2 from hands and 2 from the ground piles.</li>
-                            <li>Initially, players play from their hands. Once hands are played, the top card of a corresponding ground pile is revealed and must be played.</li>
-                            <li>Players must follow suit from both their hand and the visible ground cards.</li>
-                        </ul>
-                    </section>
+                      <section>
+                          <h3 className="text-rose-400 font-black uppercase text-[10px] mb-1">Penalties</h3>
+                          <p>Failing bid costs double the bid value. Opponents gain their own points.</p>
+                      </section>
+                    </div>
 
-                    <section>
-                        <h3 className="text-emerald-400 font-black uppercase text-xs mb-2">Bidding & "Shelem"</h3>
-                        <ul className="list-disc list-inside space-y-2 mt-2 ml-2">
-                            <li>Bidding starts from 100 and increases in increments of 5.</li>
-                            <li>The highest bidder becomes the <span className="text-yellow-500 font-bold">Hakam</span>, picks the Trump suit, and gets the 4 center cards.</li>
-                            <li>If the Hakam's team fails to reach their bid, they lose double the points bid.</li>
-                            <li>Winning all 165 points in a round is a <span className="text-emerald-400 font-bold">Shelem</span>, awarding massive bonus points.</li>
-                        </ul>
-                    </section>
+                    <div className="space-y-4">
+                      <section>
+                          <h3 className="text-emerald-400 font-black uppercase text-[10px] mb-1">Cards</h3>
+                          <ul className="space-y-1">
+                              <li><span className="text-yellow-500 font-bold">5</span> = 5 Pts • <span className="text-yellow-500 font-bold">10/A</span> = 10 Pts</li>
+                              <li>Total per round: <span className="text-emerald-400 font-bold">165</span></li>
+                          </ul>
+                      </section>
+
+                      <section>
+                          <h3 className="text-yellow-500 font-black uppercase text-[10px] mb-1">Shelem</h3>
+                          <p>Winning all 165 points in a round awards double bonus points (330).</p>
+                      </section>
+
+                      <section>
+                          <h3 className="text-blue-400 font-black uppercase text-[10px] mb-1">2-Player</h3>
+                          <p>Each has 3 piles of 4 cards on the ground. You must follow suit from hand and visible piles.</p>
+                      </section>
+                    </div>
                 </div>
             </Modal>
         )}
         {showSettings && (
-            <Modal title="Game Options" onClose={() => setShowSettings(false)}>
-                <div className="space-y-6">
-                    {/* Profile Stats Section */}
-                    {(() => {
-                        const stats = JSON.parse(localStorage.getItem('shelem_stats') || '{"wins": 0, "losses": 0, "games": 0}');
-                        const winRate = stats.games > 0 ? ((stats.wins / stats.games) * 100).toFixed(1) : 0;
-                        return (
-                            <div className="p-5 bg-emerald-500/10 border border-emerald-500/20 rounded-3xl">
-                                <div className="flex items-center gap-4 mb-4">
-                                    <div className={`w-12 h-12 rounded-full flex items-center justify-center text-black text-xl relative overflow-hidden border-2 border-emerald-500/20`}>
-                                        <PlayerAvatar avatar={room.players.find((p:any) => p.name === playerName)?.avatar || '🧔'} />
-                                    </div>
-                                    <div>
-                                        <p className="text-xs font-black uppercase tracking-widest text-emerald-500">Player Profile</p>
-                                        <p className="font-bold text-white">{playerName}</p>
-                                    </div>
-                                </div>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div className="bg-black/20 p-3 rounded-2xl text-center">
-                                        <p className="text-[10px] text-white/40 uppercase font-black">Games</p>
-                                        <p className="text-xl font-black text-white">{stats.games}</p>
-                                    </div>
-                                    <div className="bg-black/20 p-3 rounded-2xl text-center">
-                                        <p className="text-[10px] text-white/40 uppercase font-black">Wins</p>
-                                        <p className="text-xl font-black text-emerald-400">{stats.wins}</p>
-                                    </div>
-                                    <div className="bg-black/20 p-3 rounded-2xl text-center">
-                                        <p className="text-[10px] text-white/40 uppercase font-black">Rate</p>
-                                        <p className="text-xl font-black text-yellow-500">{winRate}%</p>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })()}
-
-                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
-                        <label className="block text-[10px] font-black uppercase text-white/40 mb-1 ml-1 px-1">Visuals</label>
-                        
-                        <div className="space-y-3">
-                            <p className="text-xs font-bold px-1 text-white/60">Color Theme</p>
-                            <div className="grid grid-cols-4 gap-2">
+            <Modal title="Game Options" onClose={() => setShowSettings(false)} density="COMPACT">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 items-start">
+                    <div className="space-y-4">
+                      <div className="p-4 bg-white/5 rounded-2xl border border-white/5 flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <label className="text-[10px] font-black uppercase text-white/40 italic tracking-widest">Theme & Colors</label>
+                            <div className="flex gap-1">
                                 {[
-                                    { id: 'emerald', color: '#10b981', name: 'Emerald' },
-                                    { id: 'blue', color: '#3b82f6', name: 'Blue' },
-                                    { id: 'rose', color: '#f43f5e', name: 'Rose' },
-                                    { id: 'amber', color: '#f59e0b', name: 'Amber' }
+                                    { id: 'emerald', color: '#10b981' },
+                                    { id: 'rose', color: '#f43f5e' },
+                                    { id: 'amber', color: '#f59e0b' },
+                                    { id: 'midnight', color: '#818cf8' },
                                 ].map(theme => (
                                     <button
                                         key={theme.id}
                                         onClick={() => setSelectedTheme(theme.id)}
-                                        className={`group relative flex flex-col items-center gap-1 p-2 rounded-xl border-2 transition-all ${selectedTheme === theme.id ? 'border-white bg-white/10' : 'border-transparent bg-black/20 hover:bg-black/40'}`}
-                                        title={theme.name}
-                                    >
-                                        <div 
-                                            className="w-8 h-8 rounded-full border-2 border-white/20 shadow-lg" 
-                                            style={{ backgroundColor: theme.color }}
-                                        />
-                                        <span className="text-[8px] font-black uppercase tracking-tighter opacity-40 group-hover:opacity-100">{theme.name}</span>
-                                    </button>
+                                        className={`w-4 h-4 rounded-full border border-white/20 transition-all ${selectedTheme === theme.id ? 'scale-125 border-white ring-2 ring-white/20' : 'opacity-40 hover:opacity-100'}`}
+                                        style={{ backgroundColor: theme.color }}
+                                    />
                                 ))}
                             </div>
-                        </div>
-
-                        <div className="space-y-3 pt-2">
-                            <p className="text-xs font-bold px-1 text-white/60">Font Style</p>
-                            <div className="flex flex-col gap-2">
+                          </div>
+                          
+                          <div className="space-y-2">
+                             <p className="text-[8px] font-black uppercase text-white/20 tracking-widest">Table Surface Finish</p>
+                             <div className="grid grid-cols-3 gap-1.5">
                                 {[
-                                    { id: '"Inter", sans-serif', name: 'Modern (Inter)' },
-                                    { id: '"Space Grotesk", sans-serif', name: 'Tech (Space Grotesk)' },
-                                    { id: '"JetBrains Mono", monospace', name: 'Minimal (Mono)' }
-                                ].map(font => (
-                                    <button
-                                        key={font.id}
-                                        onClick={() => setSelectedFont(font.id)}
-                                        className={`flex items-center justify-between px-4 py-3 rounded-xl border-2 transition-all ${selectedFont === font.id ? 'border-white bg-white/10' : 'border-transparent bg-black/20 hover:bg-black/40'}`}
-                                        style={{ fontFamily: font.id }}
+                                    { id: 'smooth', name: 'Smooth' },
+                                    { id: 'felt', name: 'Royal' },
+                                    { id: 'leather', name: 'Leather' },
+                                    { id: 'wood', name: 'Wood' },
+                                    { id: 'granite', name: 'Granite' },
+                                    { id: 'carbon', name: 'Carbon' }
+                                ].map(finish => (
+                                    <button 
+                                        key={finish.id}
+                                        onClick={() => setTableFinish(finish.id)}
+                                        className={`py-1.5 rounded-lg border transition-all font-bold text-[7px] uppercase tracking-tighter ${tableFinish === finish.id ? 'border-white bg-white/20 text-white' : 'border-white/5 bg-black/20 text-white/40'}`}
                                     >
-                                        <span className="text-sm font-bold">{font.name}</span>
-                                        {selectedFont === font.id && <CheckCircle2 size={16} className="text-emerald-500" />}
+                                        {finish.name}
                                     </button>
                                 ))}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                {soundEnabled ? <Volume2 size={18} className="text-emerald-500" /> : <VolumeX size={18} className="text-white/40" />}
-                                <span className="text-sm font-bold">Sound Effects</span>
-                            </div>
-                            <button 
-                                onClick={() => setSoundEnabled(!soundEnabled)}
-                                className={`w-12 h-6 rounded-full relative transition-colors ${soundEnabled ? 'bg-emerald-500' : 'bg-white/10'}`}
-                            >
-                                <motion.div 
-                                    animate={{ x: soundEnabled ? 24 : 4 }}
-                                    className="absolute top-1 w-4 h-4 bg-white rounded-full" 
-                                />
-                            </button>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <Eye size={18} className={showPossiblePlays ? "text-yellow-500" : "text-white/40"} />
-                                <span className="text-sm font-bold">Show Possible Plays</span>
-                            </div>
-                            <button 
-                                onClick={() => setShowPossiblePlays(!showPossiblePlays)}
-                                className={`w-12 h-6 rounded-full relative transition-colors ${showPossiblePlays ? 'bg-emerald-500' : 'bg-white/10'}`}
-                            >
-                                <motion.div 
-                                    animate={{ x: showPossiblePlays ? 24 : 4 }}
-                                    className="absolute top-1 w-4 h-4 bg-white rounded-full" 
-                                />
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-4">
-                        <label className="block text-[10px] font-black uppercase text-white/40 mb-1 ml-1 px-1">Emoji & Reactions</label>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <span className={`text-lg ${showChat ? 'opacity-100' : 'opacity-40 grayscale'}`}>💬</span>
-                                <span className="text-sm font-bold">Show Chat Box</span>
-                            </div>
-                            <button 
-                                onClick={() => setShowChat(!showChat)}
-                                className={`w-12 h-6 rounded-full relative transition-colors ${showChat ? 'bg-emerald-500' : 'bg-white/10'}`}
-                            >
-                                <motion.div 
-                                    animate={{ x: showChat ? 24 : 4 }}
-                                    className="absolute top-1 w-4 h-4 bg-white rounded-full" 
-                                />
-                            </button>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <span className={`text-lg ${showEmojiBar ? 'opacity-100' : 'opacity-40 grayscale'}`}>🍭</span>
-                                <span className="text-sm font-bold">Quick Emoji Bar</span>
-                            </div>
-                            <button 
-                                onClick={() => setShowEmojiBar(!showEmojiBar)}
-                                className={`w-12 h-6 rounded-full relative transition-colors ${showEmojiBar ? 'bg-emerald-500' : 'bg-white/10'}`}
-                            >
-                                <motion.div 
-                                    animate={{ x: showEmojiBar ? 24 : 4 }}
-                                    className="absolute top-1 w-4 h-4 bg-white rounded-full" 
-                                />
-                            </button>
-                        </div>
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <span className={`text-lg ${showReactions ? 'opacity-100' : 'opacity-40 grayscale'}`}>💬</span>
-                                <span className="text-sm font-bold">Player Reaction Bubbles</span>
-                            </div>
-                            <button 
-                                onClick={() => setShowReactions(!showReactions)}
-                                className={`w-12 h-6 rounded-full relative transition-colors ${showReactions ? 'bg-emerald-500' : 'bg-white/10'}`}
-                            >
-                                <motion.div 
-                                    animate={{ x: showReactions ? 24 : 4 }}
-                                    className="absolute top-1 w-4 h-4 bg-white rounded-full" 
-                                />
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="pt-2 border-t border-white/5 space-y-3">
-                        <button 
-                            onClick={handleResign}
-                            disabled={isSpectator || room.phase === 'LOBBY' || room.phase === 'GAME_OVER'}
-                            className="w-full flex items-center justify-center gap-3 py-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-2xl font-black uppercase tracking-widest transition-all border border-rose-500/20 disabled:opacity-30"
-                        >
-                            <Flag size={18} />
-                            Resign Match
-                        </button>
-                        <div className="grid grid-cols-2 gap-3">
-                            <button 
-                                onClick={handleExit}
-                                className="flex items-center justify-center gap-3 py-4 bg-white/5 hover:bg-white/10 text-white/60 rounded-2xl font-black uppercase tracking-widest transition-all border border-white/10"
-                            >
-                                <X size={18} />
-                                Exit Room
-                            </button>
-                            <button 
-                                onClick={handleLogout}
-                                className="flex items-center justify-center gap-3 py-4 bg-white/5 hover:bg-white/10 text-rose-400 rounded-2xl font-black uppercase tracking-widest transition-all border border-white/10"
-                            >
-                                <LogOut size={18} />
-                                Logout
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="p-4 bg-white/5 rounded-2xl border border-white/5">
-                        <label className="block text-[10px] font-black uppercase text-white/40 mb-3 ml-1">Session Info</label>
-                        <div className="space-y-2">
-                             <div className="flex justify-between text-xs">
-                                <span className="text-white/40">Room ID</span>
-                                <span className="font-mono text-emerald-400 font-bold">{room.id}</span>
                              </div>
-                             <div className="flex justify-between text-xs">
-                                <span className="text-white/40">Game Mode</span>
-                                <span className="font-bold">{room.mode.replace('_', ' ')}</span>
+                          </div>
+
+                          <div className="space-y-2">
+                             <p className="text-[8px] font-black uppercase text-white/20 tracking-widest">Card Back Pattern</p>
+                             <div className="flex gap-2">
+                                {[
+                                    { id: 'classic', color: 'bg-blue-900' },
+                                    { id: 'modern', color: 'bg-zinc-900' },
+                                    { id: 'royal', color: 'bg-yellow-900' }
+                                ].map(back => (
+                                    <button 
+                                        key={back.id}
+                                        onClick={() => setCardBack(back.id)}
+                                        className={`flex-1 h-6 rounded-lg border-2 transition-all ${cardBack === back.id ? 'border-white bg-white/10' : 'border-transparent bg-black/20'} ${back.color}`}
+                                    />
+                                ))}
                              </div>
-                        </div>
+                          </div>
+                      </div>
+
+                      <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-2">
+                          <label className="block text-[10px] font-black uppercase text-white/40 mb-1 italics tracking-widest">Toggles</label>
+                          <Toggle label="Sound" value={soundEnabled} onChange={setSoundEnabled} icon={<Volume2 size={12} />} />
+                          <Toggle label="Hints" value={showPossiblePlays} onChange={setShowPossiblePlays} icon={<Eye size={12} />} />
+                          <Toggle label="Chat" value={showChat} onChange={setShowChat} icon={<span className="text-[10px]">💬</span>} />
+                      </div>
                     </div>
 
-                    <div className="p-5 bg-yellow-500/10 border border-yellow-500/20 rounded-2xl text-center">
-                        <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-1">Developer Info</p>
-                        <p className="text-xs font-bold text-white/80">Deep Shelem v1.2.6 • DeepInk Team</p>
+                    <div className="space-y-4">
+                      <div className="bg-black/30 p-4 rounded-2xl border border-white/5">
+                        <div className="flex items-center justify-between mb-2">
+                            <span className="text-[8px] font-black text-white/30 uppercase">Build Info</span>
+                            <span className="text-[8px] font-black text-emerald-400 uppercase">v1.2.7 Stable</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <span className="text-[8px] font-black text-white/30 uppercase">Region</span>
+                            <span className="text-[8px] font-black text-white/60 uppercase">Global (SSL)</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-2">
+                          <button 
+                              onClick={handleResign}
+                              disabled={isSpectator || room.phase === 'LOBBY' || room.phase === 'GAME_OVER'}
+                              className="w-full py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 rounded-xl font-black uppercase tracking-widest transition-all border border-rose-500/20 disabled:opacity-30 text-[9px]"
+                          >
+                              Resign Match
+                          </button>
+                          <div className="grid grid-cols-2 gap-2">
+                              <button 
+                                  onClick={handleExit}
+                                  className="py-2.5 bg-white/5 hover:bg-white/10 text-white/60 rounded-xl font-black uppercase tracking-widest transition-all border border-white/10 text-[9px]"
+                              >
+                                  Exit Room
+                              </button>
+                              <button 
+                                  onClick={handleLogout}
+                                  className="py-2.5 bg-white/5 hover:bg-white/10 text-rose-400 rounded-xl font-black uppercase tracking-widest transition-all border border-white/10 text-[9px]"
+                              >
+                                  Log out
+                              </button>
+                          </div>
+                      </div>
+                      
+                      <div className="p-3 bg-yellow-500/5 rounded-xl border border-yellow-500/10">
+                          <p className="text-[8px] font-bold text-yellow-500/60 leading-tight italic">Your game ID is permanently linked to your stats.</p>
+                      </div>
                     </div>
                 </div>
             </Modal>
@@ -1217,32 +1195,52 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   );
 }
 
-function Modal({ title, children, onClose }: any) {
+function Modal({ title, children, onClose, density = "COMFORT" }: any) {
     return (
         <motion.div 
             initial={{ opacity: 0 }} 
             animate={{ opacity: 1 }} 
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-6"
+            className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6"
         >
             <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
             <motion.div 
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
                 exit={{ scale: 0.9, y: 20 }}
-                className="relative bg-[#14452f] border border-white/10 rounded-[40px] shadow-2xl w-full max-w-lg overflow-hidden"
+                className={`relative bg-[#14452f] border border-white/10 rounded-[30px] md:rounded-[40px] shadow-2xl w-full ${density === 'COMPACT' ? 'max-w-2xl' : 'max-w-xl'} max-h-[90vh] flex flex-col overflow-hidden`}
             >
-                <div className="px-8 py-6 border-b border-white/5 flex justify-between items-center">
-                    <h2 className="text-xl font-black uppercase tracking-widest text-yellow-500">{title}</h2>
+                <div className="px-6 md:px-8 py-4 md:py-6 border-b border-white/5 flex justify-between items-center shrink-0">
+                    <h2 className="text-lg md:text-xl font-black uppercase tracking-widest text-yellow-500">{title}</h2>
                     <button onClick={onClose} className="p-2 hover:bg-white/5 rounded-full transition-all text-white/40">
-                        <X size={24} />
+                        <X size={20} md:size={24} />
                     </button>
                 </div>
-                <div className="p-8">
+                <div className="p-6 md:p-8 overflow-y-auto custom-scrollbar">
                     {children}
                 </div>
             </motion.div>
         </motion.div>
+    );
+}
+
+function Toggle({ label, value, onChange, icon }: any) {
+    return (
+        <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <div className={`${value ? 'text-emerald-400' : 'text-white/40'} transition-colors`}>{icon}</div>
+                <span className="text-xs md:text-sm font-bold">{label}</span>
+            </div>
+            <button 
+                onClick={() => onChange(!value)}
+                className={`w-10 h-5 md:w-12 md:h-6 rounded-full relative transition-colors ${value ? 'bg-emerald-500' : 'bg-white/10'}`}
+            >
+                <motion.div 
+                    animate={{ x: value ? (window.innerWidth < 768 ? 20 : 24) : 4 }}
+                    className="absolute top-1 w-3 h-3 md:w-4 md:h-4 bg-white rounded-full" 
+                />
+            </button>
+        </div>
     );
 }
 

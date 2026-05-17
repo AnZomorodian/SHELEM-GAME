@@ -83,6 +83,12 @@ interface Player {
   socketId: string;
   cards: Card[];
   team: 0 | 1; 
+  stats?: {
+    wins: number;
+    losses: number;
+    games: number;
+    highestScore: number;
+  };
 }
 
 enum GamePhase {
@@ -128,7 +134,7 @@ async function startServer() {
   // Auth & Upload Endpoints
   app.post('/api/register', async (req, res) => {
     try {
-      const { username, password } = req.body;
+      const { username, password, email } = req.body;
       if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
       
       const users = getUsers();
@@ -137,7 +143,14 @@ async function startServer() {
       }
 
       const hashedPassword = await bcrypt.hash(password, 10);
-      const newUser = { id: nanoid(), username, password: hashedPassword, avatar: null };
+      const newUser = { 
+        id: nanoid(), 
+        username, 
+        password: hashedPassword, 
+        email: email || '',
+        avatar: null,
+        stats: { wins: 0, losses: 0, games: 0, highestScore: 0 }
+      };
       users.push(newUser);
       saveUsers(users);
       res.json({ message: 'User registered', userId: newUser.id });
@@ -160,10 +173,31 @@ async function startServer() {
       res.json({ 
         id: user.id, 
         username: user.username, 
-        avatar: user.avatar 
+        email: user.email || '',
+        avatar: user.avatar,
+        stats: user.stats || { wins: 0, losses: 0, games: 0, highestScore: 0 }
       });
     } catch (err) {
       console.error('Login error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/update-profile', async (req, res) => {
+    try {
+      const { userId, email } = req.body;
+      const users = getUsers();
+      const user = users.find((u: any) => u.id === userId);
+      
+      if (user) {
+        user.email = email;
+        saveUsers(users);
+        res.json({ success: true, email: user.email });
+      } else {
+        res.status(404).json({ error: 'User not found' });
+      }
+    } catch (err) {
+      console.error('Update profile error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -256,10 +290,14 @@ async function startServer() {
 
     socket.on('create_room', ({ name, mode, avatar, userId }) => {
       const roomId = nanoid(4).toUpperCase();
+      const users = getUsers();
+      const user = users.find((u: any) => u.id === userId);
+      const stats = user?.stats || { wins: 0, losses: 0, games: 0, highestScore: 0 };
+      
       const room: Room = {
         id: roomId,
         mode: mode || '4_PLAYER',
-        players: [{ id: userId || socket.id, name, avatar, socketId: socket.id, cards: [], team: 0 }],
+        players: [{ id: userId || socket.id, name, avatar, socketId: socket.id, cards: [], team: 0, stats }],
         spectators: [],
         phase: GamePhase.LOBBY,
         currentTurn: 0,
@@ -314,7 +352,12 @@ async function startServer() {
       }
 
       const team: 0 | 1 = room.mode === '2_PLAYER' ? (room.players.length as 0 | 1) : ([0, 1, 0, 1][room.players.length] as 0 | 1);
-      const player: Player = { id: userId || socket.id, name, avatar, socketId: socket.id, cards: [], team };
+      
+      const users = getUsers();
+      const user = users.find((u: any) => u.id === userId);
+      const stats = user?.stats || { wins: 0, losses: 0, games: 0, highestScore: 0 };
+
+      const player: Player = { id: userId || socket.id, name, avatar, socketId: socket.id, cards: [], team, stats };
       room.players.push(player);
       socket.join(roomId);
       

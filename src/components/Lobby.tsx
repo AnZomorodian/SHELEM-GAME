@@ -18,6 +18,9 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
   const [authMode, setAuthMode] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [showProfile, setShowProfile] = useState(false);
   const [authError, setAuthError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -43,7 +46,7 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password, email })
       });
       const data = await res.json();
       
@@ -99,6 +102,40 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
     }
   };
 
+  useEffect(() => {
+    if (showProfile && user) {
+        setProfileEmail(user.email || '');
+    }
+  }, [showProfile, user]);
+
+  const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
+
+  const updateProfile = async () => {
+    if (!user) return;
+    setIsUpdatingProfile(true);
+    try {
+      const res = await fetch('/api/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, email: profileEmail })
+      });
+      const data = await res.json();
+      if (data.success) {
+        const updatedUser = { ...user, email: profileEmail };
+        setUser(updatedUser);
+        localStorage.setItem('deep_shelem_user', JSON.stringify(updatedUser));
+        alert('Profile updated successfully!');
+      } else {
+        alert('Error: ' + (data.error || 'Failed to update profile'));
+      }
+    } catch (err) {
+      console.error('Update profile error:', err);
+      alert('Connection error. Please try again.');
+    } finally {
+      setIsUpdatingProfile(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -138,6 +175,23 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
               />
             </div>
           </div>
+          
+          {authMode === 'REGISTER' && (
+            <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                <label className="block text-[10px] uppercase font-black text-white/40 px-1 italic tracking-widest">Email (Optional)</label>
+                <div className="relative">
+                    <User className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" size={18} />
+                    <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full bg-black/40 border border-white/10 rounded-2xl pl-12 pr-4 py-3 focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all font-bold"
+                        placeholder="your@email.com"
+                    />
+                </div>
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="block text-[10px] uppercase font-black text-white/40 px-1 italic tracking-widest">Password</label>
             <div className="relative">
@@ -211,8 +265,89 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
         
         <h1 className="text-2xl font-black text-white uppercase tracking-tighter">Hi, {user.username}!</h1>
-        <button onClick={() => { setUser(null); localStorage.removeItem('deep_shelem_user'); }} className="text-[10px] text-white/20 font-bold uppercase tracking-widest mt-1 hover:text-rose-400 transition-colors">Logout</button>
+        <div className="flex gap-4 mt-2">
+            <button onClick={() => setShowProfile(true)} className="text-[10px] text-emerald-400 font-black uppercase tracking-widest hover:text-emerald-300 transition-colors bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">View Profile</button>
+            <button onClick={() => { setUser(null); localStorage.removeItem('deep_shelem_user'); }} className="text-[10px] text-white/20 font-bold uppercase tracking-widest hover:text-rose-400 transition-colors">Logout</button>
+        </div>
       </div>
+
+      <AnimatePresence>
+        {showProfile && (
+            <motion.div 
+                initial={{ opacity: 0 }} 
+                animate={{ opacity: 1 }} 
+                exit={{ opacity: 0 }}
+                className="absolute inset-0 z-[100] bg-black/90 backdrop-blur-xl p-8 flex flex-col"
+            >
+                <div className="flex justify-between items-center mb-8">
+                    <h2 className="text-xl font-black uppercase tracking-widest text-emerald-500">Player Profile</h2>
+                    <button onClick={() => setShowProfile(false)} className="text-white/40 hover:text-white">✕</button>
+                </div>
+                
+                <div className="flex items-center gap-4 mb-8 bg-white/5 p-4 rounded-3xl border border-white/5">
+                    <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-emerald-500/50">
+                        {user.avatar ? (
+                            <img src={user.avatar} className="w-full h-full object-cover" />
+                        ) : (
+                            <div className="w-full h-full bg-emerald-500/20 flex items-center justify-center text-emerald-500 text-2xl font-black">
+                                {user.username[0].toUpperCase()}
+                            </div>
+                        )}
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2">
+                            <p className="text-white font-black text-lg">{user.username}</p>
+                            <span className="text-[10px] font-mono text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">#{user.id.slice(0, 8)}</span>
+                        </div>
+                        <div className="mt-1 space-y-2">
+                            <label className="block text-[8px] font-black uppercase text-white/30 tracking-widest">Email Address</label>
+                            <div className="flex gap-2">
+                                <input 
+                                    value={profileEmail}
+                                    onChange={(e) => setProfileEmail(e.target.value)}
+                                    placeholder="Enter email"
+                                    className="bg-black/40 border border-white/5 rounded-xl px-3 py-1.5 text-xs text-white focus:border-emerald-500 outline-none transition-all flex-1"
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={updateProfile}
+                                    disabled={isUpdatingProfile}
+                                    className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black text-[10px] font-black px-3 rounded-xl transition-all uppercase"
+                                >
+                                    {isUpdatingProfile ? 'Saving...' : 'Save'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-8">
+                    <div className="bg-white/5 p-4 rounded-3xl border border-white/5 text-center">
+                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mb-1">Total Wins</p>
+                        <p className="text-2xl font-black text-emerald-400">{user.stats?.wins || 0}</p>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-3xl border border-white/5 text-center">
+                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mb-1">Win Rate</p>
+                        <p className="text-2xl font-black text-yellow-500">
+                            {user.stats?.games > 0 ? ((user.stats.wins / user.stats.games) * 100).toFixed(1) : 0}%
+                        </p>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-3xl border border-white/5 text-center">
+                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mb-1">Games Played</p>
+                        <p className="text-xl font-black text-white">{user.stats?.games || 0}</p>
+                    </div>
+                    <div className="bg-white/5 p-4 rounded-3xl border border-white/5 text-center">
+                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mb-1">Highest Bid</p>
+                        <p className="text-xl font-black text-yellow-500">{user.stats?.highestScore || '---'}</p>
+                    </div>
+                </div>
+
+                <div className="mt-auto">
+                    <button onClick={() => setShowProfile(false)} className="w-full py-4 bg-white/5 hover:bg-white/10 text-white font-black rounded-2xl border border-white/10 uppercase tracking-widest transition-all">Close Profile</button>
+                </div>
+            </motion.div>
+        )}
+      </AnimatePresence>
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {mode === 'INITIAL' && (

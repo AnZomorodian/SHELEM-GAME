@@ -31,6 +31,18 @@
   --game-primary: #f59e0b; /* amber-500 */
 }
 
+[data-theme="midnight"] {
+  --game-bg: #020617;
+  --game-felt: #0f172a;
+  --game-primary: #818cf8; /* indigo-400 */
+}
+
+[data-theme="forest"] {
+  --game-bg: #052e16;
+  --game-felt: #14532d;
+  --game-primary: #4ade80; /* green-400 */
+}
+
 body {
   margin: 0;
   height: 100%;

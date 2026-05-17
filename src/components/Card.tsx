@@ -37,15 +37,31 @@ const suitColors = {
 };
 
 export default function Card({ card, onClick, selected, disabled, small, hidden, highlighted, layoutId }: CardProps) {
+  const backStyle = localStorage.getItem('shelem_card_back') || 'classic';
+  
   if (hidden) {
+    const backColors: { [key: string]: string } = {
+      classic: 'bg-blue-900 border-blue-800',
+      modern: 'bg-zinc-900 border-zinc-800',
+      royal: 'bg-yellow-900 border-yellow-800',
+    };
+
     return (
-      <div className={`${small ? 'w-8 h-12' : 'w-16 h-24 md:w-20 md:h-32'} bg-slate-800 border-2 border-slate-700 rounded-lg flex items-center justify-center shadow-md overflow-hidden relative`}>
-        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent" />
-        <div className="w-full h-full border border-white/5 rounded-inner p-1">
-          <div className="w-full h-full bg-slate-900/50 rounded flex items-center justify-center">
-            <div className="w-4 h-4 border border-white/20 rotate-45" />
+      <div className={`${small ? 'w-10 h-16' : 'w-16 h-24 md:w-20 md:h-32'} ${backColors[backStyle] || backColors.classic} border-2 rounded-xl flex items-center justify-center shadow-md overflow-hidden relative`}>
+        <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent" />
+        <div className="w-full h-full border border-white/10 rounded-inner p-1.5">
+          <div className="w-full h-full bg-white/5 rounded-lg flex items-center justify-center border border-white/5">
+             <div className="relative">
+                <div className="w-6 h-6 border-2 border-white/20 rotate-45 flex items-center justify-center">
+                    <div className="w-3 h-3 border border-white/10" />
+                </div>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-px bg-white/10 -rotate-45" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-px bg-white/10 -rotate-45" />
+             </div>
           </div>
         </div>
+        {/* Pattern overlay */}
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(circle, white 1px, transparent 1px)', backgroundSize: '10px 10px' }} />
       </div>
     );
   }
