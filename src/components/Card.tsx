@@ -15,6 +15,7 @@ interface CardProps {
   onClick?: () => void;
   selected?: boolean;
   disabled?: boolean;
+  size?: 'small' | 'medium' | 'large';
   small?: boolean;
   hidden?: boolean;
   highlighted?: boolean;
@@ -36,9 +37,24 @@ const suitColors = {
   CLUBS: 'text-slate-900',
 };
 
-export default function Card({ card, onClick, selected, disabled, small, hidden, highlighted, layoutId }: CardProps) {
+export default function Card({ card, onClick, selected, disabled, size = 'medium', small, hidden, highlighted, layoutId }: CardProps) {
   const backStyle = localStorage.getItem('shelem_card_back') || 'classic';
   
+  // Backward compatibility
+  const effectiveSize = small ? 'small' : size;
+
+  const sizeClasses = {
+    small: 'w-10 h-16 text-[10px] p-1 md:p-1.5',
+    medium: 'w-16 h-24 md:w-20 md:h-32 lg:w-24 lg:h-36 p-1.5 md:p-2.5 lg:p-4',
+    large: 'w-20 h-28 md:w-24 md:h-36 lg:w-32 lg:h-48 p-2 md:p-3.5 lg:p-6'
+  };
+
+  const iconSizes = {
+    small: { corner: 8, center: 16 },
+    medium: { corner: 12, center: 28 },
+    large: { corner: 16, center: 40 }
+  };
+
   if (hidden) {
     const backColors: { [key: string]: string } = {
       classic: 'bg-blue-900 border-blue-800',
@@ -46,13 +62,19 @@ export default function Card({ card, onClick, selected, disabled, small, hidden,
       royal: 'bg-yellow-900 border-yellow-800',
     };
 
+    const hiddenSizeClasses = {
+        small: 'w-10 h-16',
+        medium: 'w-16 h-24 md:w-20 md:h-32',
+        large: 'w-20 h-28 md:w-24 md:h-36'
+    };
+
     return (
-      <div className={`${small ? 'w-10 h-16' : 'w-16 h-24 md:w-20 md:h-32'} ${backColors[backStyle] || backColors.classic} border-2 rounded-xl flex items-center justify-center shadow-md overflow-hidden relative`}>
+      <div className={`${hiddenSizeClasses[effectiveSize]} ${backColors[backStyle] || backColors.classic} border-2 rounded-xl flex items-center justify-center shadow-md overflow-hidden relative`}>
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent" />
         <div className="w-full h-full border border-white/10 rounded-inner p-1.5">
           <div className="w-full h-full bg-white/5 rounded-lg flex items-center justify-center border border-white/5">
              <div className="relative">
-                <div className="w-6 h-6 border-2 border-white/20 rotate-45 flex items-center justify-center">
+                <div className={`w-6 h-6 border-2 border-white/20 rotate-45 flex items-center justify-center ${effectiveSize === 'large' ? 'scale-150' : ''}`}>
                     <div className="w-3 h-3 border border-white/10" />
                 </div>
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-px bg-white/10 -rotate-45" />
@@ -78,8 +100,8 @@ export default function Card({ card, onClick, selected, disabled, small, hidden,
       whileTap={!disabled ? { scale: 0.95 } : {}}
       onClick={!disabled ? onClick : undefined}
       className={`
-        ${small ? 'w-10 h-16 text-[10px]' : 'w-16 h-24 md:w-20 md:h-32 lg:w-24 lg:h-36'} 
-        bg-white rounded-xl flex flex-col items-center justify-between p-1.5 md:p-2.5 lg:p-4 cursor-pointer relative overflow-hidden group
+        ${sizeClasses[effectiveSize]}
+        bg-white rounded-xl flex flex-col items-center justify-between cursor-pointer relative overflow-hidden group
         border-b-4 flex-shrink-0
         transition-all duration-300
         ${selected ? 'ring-4 ring-emerald-500 -translate-y-6 md:-translate-y-8 border-emerald-600 z-50 shadow-[0_20px_40px_rgba(16,185,129,0.3)]' : 'shadow-lg border-gray-200'}
@@ -89,26 +111,26 @@ export default function Card({ card, onClick, selected, disabled, small, hidden,
       `}
     >
       <div className="flex flex-col items-center self-start gap-0.5">
-        <div className="font-black leading-none text-sm md:text-base lg:text-xl">
+        <div className={`font-black leading-none ${effectiveSize === 'small' ? 'text-sm' : 'text-sm md:text-base lg:text-xl'}`}>
           {card.rank}
         </div>
         <div className="opacity-80">
-          {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: small ? 8 : 12 })}
+          {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: iconSizes[effectiveSize].corner })}
         </div>
       </div>
       
       <div className={`w-full flex-1 flex items-center justify-center`}>
-        <div className={`${small ? 'p-1' : 'p-2 md:p-3 lg:p-4'} rounded-full bg-current/5 border border-current/10 flex items-center justify-center transition-transform group-hover:scale-125 duration-500`}>
-          {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: small ? 16 : 28 })}
+        <div className={`${effectiveSize === 'small' ? 'p-1' : 'p-2 md:p-3 lg:p-4'} rounded-full bg-current/5 border border-current/10 flex items-center justify-center transition-transform group-hover:scale-125 duration-500`}>
+          {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: iconSizes[effectiveSize].center })}
         </div>
       </div>
 
       <div className="flex flex-col items-center self-end gap-0.5 rotate-180">
-        <div className="font-black leading-none text-sm md:text-base lg:text-xl">
+        <div className={`font-black leading-none ${effectiveSize === 'small' ? 'text-sm' : 'text-sm md:text-base lg:text-xl'}`}>
           {card.rank}
         </div>
         <div className="opacity-80">
-          {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: small ? 8 : 12 })}
+          {React.cloneElement(suitIcons[card.suit] as React.ReactElement, { size: iconSizes[effectiveSize].corner })}
         </div>
       </div>
 

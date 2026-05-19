@@ -110,6 +110,28 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
 
   const [isUpdatingProfile, setIsUpdatingProfile] = useState(false);
 
+  // Experience & Level Calculation logic
+  const calculateLevel = (stats: any) => {
+    const games = stats?.games || 0;
+    const wins = stats?.wins || 0;
+    const xp = (games * 10) + (wins * 50);
+    const level = Math.floor(Math.sqrt(xp / 100)) + 1;
+    const nextLevelXP = Math.pow(level, 2) * 100;
+    const progress = (xp % nextLevelXP) / nextLevelXP * 100;
+    return { level, progress, xp };
+  };
+
+  const getRank = (level: number) => {
+    if (level >= 20) return { name: 'GRANDMASTER', color: 'text-amber-400' };
+    if (level >= 15) return { name: 'MASTER', color: 'text-purple-400' };
+    if (level >= 10) return { name: 'PRO', color: 'text-blue-400' };
+    if (level >= 5) return { name: 'VETERAN', color: 'text-emerald-400' };
+    return { name: 'ROOKIE', color: 'text-white/40' };
+  };
+
+  const levelData = calculateLevel(user?.stats);
+  const rank = getRank(levelData.level);
+
   const updateProfile = async () => {
     if (!user) return;
     setIsUpdatingProfile(true);
@@ -142,7 +164,7 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
     const displayName = user.username;
     const avatar = user.avatar || '🧔'; // Fallback if no upload
     if (mode === 'CREATE') onCreate(displayName, gameMode, avatar);
-    else if (mode === 'JOIN' && roomId) onJoin(displayName, roomId, avatar);
+    else if (mode === 'JOIN' && roomId) onJoin(displayName, roomId, avatar, false);
   };
 
   if (!user) {
@@ -155,7 +177,6 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
         }}
       >
         <div className="text-center mb-8">
-          <div className="w-12 h-12 bg-yellow-500 rounded-xl flex items-center justify-center font-black text-black text-3xl mx-auto mb-4 shadow-lg shadow-yellow-500/20">S</div>
           <h1 className="text-4xl font-black tracking-tighter mb-2 text-white uppercase">DEEP SHELEM</h1>
           <p className="text-yellow-500 text-xs font-bold uppercase tracking-[0.2em]">{authMode === 'LOGIN' ? 'Welcome Back' : 'Create Account'}</p>
         </div>
@@ -169,7 +190,7 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full bg-black/40 border border-white/10 rounded-2xl pl-12 pr-4 py-3 focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all font-bold"
+                className="w-full bg-black/40 border border-white/10 rounded-2xl pl-12 pr-4 py-3 focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all font-bold text-white placeholder:text-white/10"
                 placeholder="Username"
                 required
               />
@@ -185,7 +206,7 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full bg-black/40 border border-white/10 rounded-2xl pl-12 pr-4 py-3 focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all font-bold"
+                        className="w-full bg-black/40 border border-white/10 rounded-2xl pl-12 pr-4 py-3 focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all font-bold text-white placeholder:text-white/10"
                         placeholder="your@email.com"
                     />
                 </div>
@@ -200,7 +221,7 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-black/40 border border-white/10 rounded-2xl pl-12 pr-4 py-3 focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all font-bold"
+                className="w-full bg-black/40 border border-white/10 rounded-2xl pl-12 pr-4 py-3 focus:ring-2 focus:ring-emerald-500/50 outline-none transition-all font-bold text-white placeholder:text-white/10"
                 placeholder="••••••••"
                 required
               />
@@ -244,13 +265,13 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
 
       <div className="text-center mb-8 flex flex-col items-center">
         <div className="relative group cursor-pointer mb-4" onClick={() => fileInputRef.current?.click()}>
-          <div className="w-24 h-24 rounded-[2rem] border-4 border-emerald-500/50 overflow-hidden bg-black/40 flex items-center justify-center group-hover:border-yellow-500 transition-all">
+          <div className="w-24 h-24 rounded-[2.5rem] border-4 border-emerald-500/50 overflow-hidden bg-black/40 flex items-center justify-center group-hover:border-yellow-500 transition-all shadow-[0_0_30px_rgba(16,185,129,0.2)]">
             {user.avatar || avatarPreview ? (
               <img src={avatarPreview || user.avatar} alt="Avatar" className="w-full h-full object-cover" />
             ) : (
               <User size={48} className="text-white/20" />
             )}
-            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-[2rem]">
+            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-[2.5rem]">
               <Upload size={24} className="text-white" />
             </div>
           </div>
@@ -261,89 +282,128 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
                 </div>
              </div>
           )}
+          <div className="absolute -bottom-1 -right-1 bg-yellow-500 text-black w-8 h-8 rounded-full border-2 border-[#123e2a] flex items-center justify-center font-black text-xs">
+            {levelData.level}
+          </div>
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
         
-        <h1 className="text-2xl font-black text-white uppercase tracking-tighter">Hi, {user.username}!</h1>
-        <div className="flex gap-4 mt-2">
-            <button onClick={() => setShowProfile(true)} className="text-[10px] text-emerald-400 font-black uppercase tracking-widest hover:text-emerald-300 transition-colors bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">View Profile</button>
-            <button onClick={() => { setUser(null); localStorage.removeItem('deep_shelem_user'); }} className="text-[10px] text-white/20 font-bold uppercase tracking-widest hover:text-rose-400 transition-colors">Logout</button>
+        <div className="flex flex-col items-center">
+            <h1 className="text-2xl font-black text-white uppercase tracking-tighter leading-none mb-1">{user.username}</h1>
+            <p className={`text-[10px] font-black tracking-[0.2em] uppercase ${rank.color}`}>{rank.name}</p>
+        </div>
+
+        <div className="w-full max-w-[200px] mt-4 space-y-1">
+            <div className="flex justify-between text-[8px] font-black text-white/30 uppercase tracking-widest">
+                <span>LVL {levelData.level}</span>
+                <span>{Math.floor(levelData.progress)}%</span>
+            </div>
+            <div className="h-1.5 bg-white/5 rounded-full overflow-hidden p-[1px] border border-white/5">
+                <motion.div 
+                    initial={{ width: 0 }}
+                    animate={{ width: `${levelData.progress}%` }}
+                    className="h-full bg-emerald-500 rounded-full"
+                />
+            </div>
+        </div>
+
+        <div className="flex gap-4 mt-6">
+            <button onClick={() => setShowProfile(true)} className="text-[10px] text-emerald-400 font-black uppercase tracking-widest hover:text-emerald-300 transition-colors bg-emerald-500/10 px-4 py-2 rounded-xl border border-emerald-500/20 shadow-lg">Hall of Fame</button>
+            <button onClick={() => { setUser(null); localStorage.removeItem('deep_shelem_user'); }} className="text-[10px] text-white/20 font-bold uppercase tracking-widest hover:text-rose-400 transition-colors">Sign Out</button>
         </div>
       </div>
 
       <AnimatePresence>
         {showProfile && (
             <motion.div 
-                initial={{ opacity: 0 }} 
-                animate={{ opacity: 1 }} 
-                exit={{ opacity: 0 }}
-                className="absolute inset-0 z-[100] bg-black/90 backdrop-blur-xl p-8 flex flex-col"
+                initial={{ opacity: 0, x: 20 }} 
+                animate={{ opacity: 1, x: 0 }} 
+                exit={{ opacity: 0, x: 20 }}
+                className="absolute inset-0 z-[100] bg-[#0a2e1f] p-6 md:p-8 flex flex-col"
             >
-                <div className="flex justify-between items-center mb-8">
-                    <h2 className="text-xl font-black uppercase tracking-widest text-emerald-500">Player Profile</h2>
-                    <button onClick={() => setShowProfile(false)} className="text-white/40 hover:text-white">✕</button>
+                <div className="flex justify-between items-start mb-6 shrink-0">
+                    <div>
+                        <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest text-emerald-500 leading-none mb-1">Player Card</h2>
+                        <p className="text-[8px] md:text-[10px] text-white/20 font-black uppercase tracking-[0.3em]">Season 1 • v1.3.2</p>
+                    </div>
+                    <button onClick={() => setShowProfile(false)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 text-white/40 hover:text-white hover:bg-white/10 transition-all border border-white/10">✕</button>
                 </div>
                 
-                <div className="flex items-center gap-4 mb-8 bg-white/5 p-4 rounded-3xl border border-white/5">
-                    <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-emerald-500/50">
-                        {user.avatar ? (
-                            <img src={user.avatar} className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="w-full h-full bg-emerald-500/20 flex items-center justify-center text-emerald-500 text-2xl font-black">
-                                {user.username[0].toUpperCase()}
+                <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-6">
+                    <div className="relative p-6 rounded-[2.5rem] bg-gradient-to-br from-emerald-500/20 to-emerald-900/40 border border-emerald-500/20 shadow-2xl overflow-hidden group">
+                        <div className="absolute top-[-20%] right-[-10%] w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all" />
+                        
+                        <div className="flex items-center gap-5 relative z-10">
+                            <div className="w-20 h-20 rounded-[2rem] overflow-hidden border-4 border-emerald-500/30 shadow-xl bg-black/40">
+                                {user.avatar ? (
+                                    <img src={user.avatar} className="w-full h-full object-cover" />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-emerald-500 text-3xl font-black">
+                                        {user.username[0].toUpperCase()}
+                                    </div>
+                                )}
                             </div>
-                        )}
-                    </div>
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <p className="text-white font-black text-lg">{user.username}</p>
-                            <span className="text-[10px] font-mono text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20">#{user.id.slice(0, 8)}</span>
+                            <div>
+                                <p className="text-white font-black text-2xl tracking-tighter uppercase leading-tight">{user.username}</p>
+                                <div className="flex items-center gap-2 mt-1">
+                                    <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-black/60 border border-white/10 ${rank.color}`}>
+                                        {rank.name}
+                                    </span>
+                                    <span className="text-[9px] font-mono text-white/20">ID: {user.id.slice(0, 8)}</span>
+                                </div>
+                            </div>
                         </div>
-                        <div className="mt-1 space-y-2">
-                            <label className="block text-[8px] font-black uppercase text-white/30 tracking-widest">Email Address</label>
-                            <div className="flex gap-2">
-                                <input 
-                                    value={profileEmail}
-                                    onChange={(e) => setProfileEmail(e.target.value)}
-                                    placeholder="Enter email"
-                                    className="bg-black/40 border border-white/5 rounded-xl px-3 py-1.5 text-xs text-white focus:border-emerald-500 outline-none transition-all flex-1"
+
+                        <div className="mt-6 space-y-2 relative z-10">
+                            <div className="flex justify-between text-[9px] font-black text-white/40 uppercase tracking-widest italic">
+                                <span>Progress to Level {levelData.level + 1}</span>
+                                <span>{Math.floor(levelData.progress)}%</span>
+                            </div>
+                            <div className="h-2 bg-black/60 rounded-full overflow-hidden p-[1px] border border-white/5 shadow-inner">
+                                <motion.div 
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${levelData.progress}%` }}
+                                    className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.5)]"
                                 />
-                                <button 
-                                    type="button"
-                                    onClick={updateProfile}
-                                    disabled={isUpdatingProfile}
-                                    className="bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 text-black text-[10px] font-black px-3 rounded-xl transition-all uppercase"
-                                >
-                                    {isUpdatingProfile ? 'Saving...' : 'Save'}
-                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                        <StatsCard icon={<Club size={16} />} label="Wins" value={user.stats?.wins || 0} color="emerald" />
+                        <StatsCard icon={<Diamond size={16} />} label="Win Rate" value={`${user.stats?.games > 0 ? ((user.stats.wins / user.stats.games) * 100).toFixed(0) : 0}%`} color="yellow" />
+                        <StatsCard icon={<Spade size={16} />} label="Total Games" value={user.stats?.games || 0} color="blue" />
+                        <StatsCard icon={<Heart size={16} />} label="Peak Bid" value={user.stats?.highestScore || '---'} color="rose" />
+                    </div>
+
+                    <div className="bg-black/60 rounded-[2rem] border border-white/10 p-6 space-y-4 shadow-xl">
+                        <label className="block text-[10px] font-black uppercase text-white/20 tracking-widest italic ml-1">Account Security</label>
+                        <div className="space-y-4">
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[9px] font-black uppercase text-white/40 ml-1">Verified Email:</label>
+                                <div className="flex gap-2">
+                                    <input 
+                                        value={profileEmail}
+                                        onChange={(e) => setProfileEmail(e.target.value)}
+                                        placeholder="Enter your email"
+                                        className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-emerald-500 outline-none transition-all flex-1 font-bold shadow-inner"
+                                    />
+                                    <button 
+                                        type="button"
+                                        onClick={updateProfile}
+                                        disabled={isUpdatingProfile}
+                                        className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black text-[10px] font-black px-6 rounded-xl transition-all uppercase tracking-widest shadow-lg active:scale-95"
+                                    >
+                                        {isUpdatingProfile ? '...' : 'Sync'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mb-8">
-                    <div className="bg-white/5 p-4 rounded-3xl border border-white/5 text-center">
-                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mb-1">Total Wins</p>
-                        <p className="text-2xl font-black text-emerald-400">{user.stats?.wins || 0}</p>
-                    </div>
-                    <div className="bg-white/5 p-4 rounded-3xl border border-white/5 text-center">
-                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mb-1">Win Rate</p>
-                        <p className="text-2xl font-black text-yellow-500">
-                            {user.stats?.games > 0 ? ((user.stats.wins / user.stats.games) * 100).toFixed(1) : 0}%
-                        </p>
-                    </div>
-                    <div className="bg-white/5 p-4 rounded-3xl border border-white/5 text-center">
-                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mb-1">Games Played</p>
-                        <p className="text-xl font-black text-white">{user.stats?.games || 0}</p>
-                    </div>
-                    <div className="bg-white/5 p-4 rounded-3xl border border-white/5 text-center">
-                        <p className="text-[10px] text-white/40 font-black uppercase tracking-widest mb-1">Highest Bid</p>
-                        <p className="text-xl font-black text-yellow-500">{user.stats?.highestScore || '---'}</p>
-                    </div>
-                </div>
-
-                <div className="mt-auto">
-                    <button onClick={() => setShowProfile(false)} className="w-full py-4 bg-white/5 hover:bg-white/10 text-white font-black rounded-2xl border border-white/10 uppercase tracking-widest transition-all">Close Profile</button>
+                <div className="mt-6 shrink-0">
+                    <button onClick={() => setShowProfile(false)} className="w-full py-4 bg-white/5 hover:bg-white/10 text-white font-black rounded-2xl border border-white/10 uppercase tracking-[0.3em] transition-all text-[10px] shadow-lg">Close Card</button>
                 </div>
             </motion.div>
         )}
@@ -397,17 +457,23 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
         )}
 
         {mode === 'JOIN' && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-            <label className="block text-[10px] uppercase tracking-widest font-black text-white/40 mb-2 px-1 text-center">Enter Room Code</label>
-            <input
-              type="text"
-              value={roomId}
-              onChange={(e) => setRoomId(e.target.value.toUpperCase())}
-              placeholder="0000"
-              maxLength={4}
-              className="w-full bg-black/40 border border-white/10 rounded-2xl px-4 py-3 focus:ring-2 focus:ring-yellow-500/50 outline-none text-center text-3xl font-mono tracking-[0.5em] font-black text-yellow-400"
-              required
-            />
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-4">
+            <div className="text-center">
+                <label className="block text-[10px] uppercase tracking-[0.3em] font-black text-white/20 mb-4 px-1">Access Protocol</label>
+            </div>
+            <div className="relative group">
+                <div className="absolute -inset-1 bg-yellow-500/20 rounded-2xl blur opacity-0 group-focus-within:opacity-100 transition-opacity" />
+                <input
+                    type="text"
+                    value={roomId}
+                    onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+                    placeholder="CODE"
+                    maxLength={4}
+                    className="relative w-full bg-black/60 border border-white/10 rounded-2xl px-4 py-5 focus:border-yellow-500 outline-none text-center text-4xl font-mono tracking-[0.4em] font-black text-yellow-400 placeholder:text-white/5 transition-all shadow-inner"
+                    required
+                />
+            </div>
+            <p className="text-[8px] text-center text-white/20 font-bold uppercase tracking-widest">Ask the host for the 4-digit room code</p>
           </motion.div>
         )}
 
@@ -433,9 +499,28 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
           Team Red vs Team Blue • Classic Card Game
         </p>
         <p className="text-[10px] text-emerald-500 font-black mt-4 uppercase tracking-[0.2em]">
-          Deep Shelem v1.2.6 • DeepInk Team
+          Deep Shelem v1.3.2 • DeepInk Team
         </p>
       </div>
     </div>
   );
+}
+
+function StatsCard({ icon, label, value, color }: { icon: any; label: string; value: string | number; color: string }) {
+    const colors: { [key: string]: string } = {
+        emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+        yellow: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+        blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+        rose: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+    };
+
+    return (
+        <div className={`bg-black/40 p-4 rounded-3xl border border-white/5 relative overflow-hidden group flex flex-col items-center`}>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-2 ${colors[color]}`}>
+                {icon}
+            </div>
+            <p className="text-[9px] text-white/40 font-black uppercase tracking-widest mb-1 italic">{label}</p>
+            <p className="text-xl md:text-2xl font-black text-white">{value}</p>
+        </div>
+    );
 }

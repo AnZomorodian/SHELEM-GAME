@@ -3,7 +3,7 @@ import type { Socket } from 'socket.io-client';
 import { motion, AnimatePresence } from 'motion/react';
 import Card, { CardData, Suit } from './Card';
 import Chat from './Chat';
-import { Users, Info, Settings, HelpCircle, CheckCircle2, X, Volume2, VolumeX, Eye, LogOut, Flag, Crown, Copy } from 'lucide-react';
+import { Users, Info, Settings, HelpCircle, CheckCircle2, X, Volume2, VolumeX, Eye, LogOut, Flag, Crown, Copy, Newspaper } from 'lucide-react';
 
 interface GameBoardProps {
   room: any;
@@ -51,20 +51,45 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   const [showRules, setShowRules] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showStats, setShowStats] = useState(false);
+  const [showNews, setShowNews] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [showPossiblePlays, setShowPossiblePlays] = useState(true);
-  const [showReactions, setShowReactions] = useState(true);
-  const [showEmojiBar, setShowEmojiBar] = useState(true);
-  const [showChat, setShowChat] = useState(() => localStorage.getItem('shelem_show_chat') !== 'false');
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [showPossiblePlays, setShowPossiblePlays] = useState(false);
+  const [showReactions, setShowReactions] = useState(false);
+  const [showEmojiBar, setShowEmojiBar] = useState(false);
+  const [showChat, setShowChat] = useState(() => localStorage.getItem('shelem_show_chat') === 'true');
   const [selectedFont, setSelectedFont] = useState(() => localStorage.getItem('shelem_font') || '"Inter", sans-serif');
   const [selectedTheme, setSelectedTheme] = useState(() => localStorage.getItem('shelem_theme') || 'emerald');
   const [cardBack, setCardBack] = useState(() => localStorage.getItem('shelem_card_back') || 'classic');
   const [tableFinish, setTableFinish] = useState(() => localStorage.getItem('shelem_table_finish') || 'smooth');
+  const [cardSize, setCardSize] = useState<'small' | 'medium' | 'large'>(() => (localStorage.getItem('shelem_card_size') as any) || 'medium');
   const [resignRequest, setResignRequest] = useState<any>(null);
   const [reactions, setReactions] = useState<{ [playerId: string]: string }>({});
   const [localStats, setLocalStats] = useState<any>({ wins: 0, losses: 0, games: 0 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
+  const [spectatorPerspective, setSpectatorPerspective] = useState(0);
+  const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((e) => {
+        console.error(`Error attempting to enable full-screen mode: ${e.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
 
   useEffect(() => {
     localStorage.setItem('shelem_font', selectedFont);
@@ -86,6 +111,10 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   useEffect(() => {
     localStorage.setItem('shelem_table_finish', tableFinish);
   }, [tableFinish]);
+
+  useEffect(() => {
+    localStorage.setItem('shelem_card_size', cardSize);
+  }, [cardSize]);
 
   useEffect(() => {
     setIsActionLoading(false);
@@ -124,26 +153,26 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   }, [socket]);
 
     // Statistics Persistence
-    useEffect(() => {
-        if (room.phase === 'GAME_OVER') {
-            const stats = JSON.parse(localStorage.getItem('shelem_stats') || '{"wins": 0, "losses": 0, "games": 0}');
-            stats.games += 1;
-            const myPlayer = room.players.find((p: any) => p.name === playerName);
-            if (myPlayer) {
-                const winningTeam = room.scores[0] > room.scores[1] ? 0 : 1;
-                if (myPlayer.team === winningTeam) stats.wins += 1;
-                else stats.losses += 1;
-            }
-            localStorage.setItem('shelem_stats', JSON.stringify(stats));
-        }
-    }, [room.phase === 'GAME_OVER']);
+  useEffect(() => {
+    if (room.phase === 'GAME_OVER') {
+      const stats = JSON.parse(localStorage.getItem('shelem_stats') || '{"wins": 0, "losses": 0, "games": 0}');
+      stats.games += 1;
+      const myPlayer = room.players.find((p: any) => p.name === playerName);
+      if (myPlayer) {
+        const winningTeam = room.scores[0] > room.scores[1] ? 0 : 1;
+        if (myPlayer.team === winningTeam) stats.wins += 1;
+        else stats.losses += 1;
+      }
+      localStorage.setItem('shelem_stats', JSON.stringify(stats));
+    }
+  }, [room.phase]);
 
   const is2P = room.mode === '2_PLAYER';
   const isSpectator = !room.players.some((p: any) => p.name === playerName);
 
   // Normalize positions
   let myIndex = room.players.findIndex((p: any) => p.name === playerName);
-  if (myIndex === -1) myIndex = 0; // Default view for spectator
+  if (myIndex === -1) myIndex = spectatorPerspective; // Use chosen perspective for spectator
   
   const getOrderedPlayers = () => {
     if (is2P) {
@@ -169,14 +198,22 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   };
 
   const handleAction = (card: CardData, fromPileIndex?: number) => {
-    if (isSpectator || isActionLoading) return;
+    if (isSpectator || isActionLoading || !card) return;
+    
+    // Prevent multiple submissions if first one is still processing
+    const isPlaying = room.phase === 'PLAYING';
+    const isOwner = room.players[myIndex]?.cards.some((c: any) => c.suit === card.suit && c.rank === card.rank) || fromPileIndex !== undefined;
+    
+    if (!isOwner && isPlaying) return;
+
     if (room.phase === 'DISCARDING') {
       if (selectedCards.some(c => c.suit === card.suit && c.rank === card.rank)) {
         setSelectedCards(selectedCards.filter(c => !(c.suit === card.suit && c.rank === card.rank)));
       } else if (selectedCards.length < 4) {
         setSelectedCards([...selectedCards, card]);
       }
-    } else if (room.phase === 'PLAYING') {
+    } else if (isPlaying) {
+      if (!isMyTurn) return;
       setIsActionLoading(true);
       socket.emit('play_card', { roomId: room.id, card, fromPileIndex });
     }
@@ -373,7 +410,6 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
       {/* Header */}
       <header className="bg-black/30 backdrop-blur-md px-3 md:px-6 py-2 md:py-4 flex justify-between items-center border-b border-white/10 shrink-0 z-50">
         <div className="flex items-center gap-2 md:gap-4">
-          <div className="w-7 h-7 md:w-10 md:h-10 bg-yellow-500 rounded-lg flex items-center justify-center font-bold text-black text-lg md:text-2xl shadow-lg shadow-yellow-500/20">S</div>
           <div>
             <h1 className="text-sm md:text-xl font-black tracking-tighter uppercase leading-none">Deep Shelem</h1>
             <p className="hidden md:block text-[10px] text-yellow-500 font-bold uppercase tracking-widest">Classic Iranian Card Game</p>
@@ -408,12 +444,28 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
             </button>
           </div>
           <div className="flex gap-1 md:gap-2">
+            {isSpectator && (
+              <button 
+                onClick={() => setShowHistory(!showHistory)}
+                className={`p-2.5 rounded-full transition-all border ${showHistory ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-white/5 hover:bg-white/10 text-emerald-400 border-white/10'}`}
+                title="Match History"
+              >
+                <Info size={18} />
+              </button>
+            )}
             <button 
               onClick={() => setShowStats(!showStats)}
               className="lg:hidden p-2.5 bg-white/5 hover:bg-white/10 rounded-full transition-all border border-white/10 text-emerald-400"
               title="Stats"
             >
               <Users size={18} />
+            </button>
+            <button 
+              onClick={() => setShowNews(true)}
+              className="p-2.5 bg-white/5 hover:bg-white/10 rounded-full transition-all border border-white/10 text-yellow-500"
+              title="What's New"
+            >
+              <Newspaper size={18} />
             </button>
             <button 
               onClick={() => setShowRules(true)}
@@ -500,6 +552,8 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                     { x: -300, y: 0 }, // Left
                 ];
 
+                const isFollowedPlayerCard = trick.playerId === room.players[myIndex]?.id;
+
                 return (
                   <motion.div
                     key={`${trick.playerId}-${i}`}
@@ -532,7 +586,14 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                     }}
                     className="absolute z-[40]"
                   >
-                    <Card card={trick.card} layoutId={`card-${trick.card.suit}-${trick.card.rank}`} />
+                    {isFollowedPlayerCard && (
+                        <div className="absolute -inset-2 bg-emerald-500/30 rounded-2xl blur-xl animate-pulse" />
+                    )}
+                    <Card 
+                        card={trick.card} 
+                        layoutId={`card-${trick.card.suit}-${trick.card.rank}`} 
+                        highlighted={isFollowedPlayerCard}
+                    />
                   </motion.div>
                 );
               })}
@@ -777,19 +838,29 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
           {/* My Hand at Bottom */}
           <div className="absolute bottom-[-10px] md:bottom-[-20px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-full max-w-7xl mx-auto overflow-hidden">
+            {isSpectator && room.phase !== 'LOBBY' && (
+                <div className="flex justify-center mb-1">
+                    <span className="text-[10px] font-black text-yellow-500 bg-black/60 px-4 py-1.5 rounded-full border border-yellow-500/30 backdrop-blur-md uppercase tracking-[0.2em] shadow-xl">
+                        Watching {room.players[myIndex]?.name}'s Hand
+                    </span>
+                </div>
+            )}
             <div className={`flex justify-center -space-x-6 md:-space-x-10 lg:-space-x-6 px-4 pb-12 transition-all duration-300 scale-[0.7] sm:scale-[0.8] md:scale-90 lg:scale-100 origin-bottom`}>
-                {!isSpectator && room.players[myIndex]?.cards.map((c: CardData, i: number) => (
+                {room.players[myIndex]?.cards.map((c: CardData, i: number) => (
                   <Card 
                     key={`${c.suit}-${c.rank}`} 
                     card={c} 
+                    size={cardSize}
                     onClick={() => {
-                        playSound('play');
-                        handleAction(c);
+                        if (!isSpectator) {
+                            playSound('play');
+                            handleAction(c);
+                        }
                     }}
                     selected={selectedCards.some(sc => sc.suit === c.suit && sc.rank === c.rank)}
                     highlighted={possiblePlays.some((p: any) => p.suit === c.suit && p.rank === c.rank)}
                     layoutId={`card-${c.suit}-${c.rank}`}
-                    disabled={(!isMyTurn && room.phase === 'PLAYING') || (room.phase === 'PLAYING' && is2P && room.subPhase === 'PILE') || (room.phase === 'DISCARDING' && !isMyTurn)}
+                    disabled={isSpectator || (!isMyTurn && room.phase === 'PLAYING') || (room.phase === 'PLAYING' && is2P && room.subPhase === 'PILE') || (room.phase === 'DISCARDING' && !isMyTurn)}
                   />
                 ))}
             </div>
@@ -802,54 +873,215 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
           w-full lg:w-72 flex flex-col gap-4 animate-in slide-in-from-right duration-300
         `}>
           {showStats && (
-            <div className="lg:hidden flex justify-between items-center mb-4">
-              <h2 className="text-lg font-black uppercase text-emerald-400">Match Details</h2>
-              <button onClick={() => setShowStats(false)} className="p-2 bg-white/5 rounded-full"><X size={20} /></button>
+            <>
+              <div className="lg:hidden flex justify-between items-center mb-4">
+                <h2 className="text-lg font-black uppercase text-emerald-400">Match Details</h2>
+                <button onClick={() => setShowStats(false)} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-2.5 bg-yellow-400/10 border border-yellow-400/20 rounded-2xl">
+                 <p className="text-[10px] font-black text-yellow-400 uppercase tracking-widest text-center">Spectator Mode</p>
+                 <div className="flex flex-col gap-2 mt-3">
+                    <p className="text-[8px] font-black text-white/30 uppercase tracking-tighter ml-1">Follow Perspective:</p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                        {room.players.map((p: any, idx: number) => (
+                            <button
+                                key={p.id}
+                                onClick={() => setSpectatorPerspective(idx)}
+                                className={`py-1.5 px-2 rounded-xl text-[8px] font-black uppercase transition-all truncate border ${spectatorPerspective === idx ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'}`}
+                            >
+                                {p.name}
+                            </button>
+                        ))}
+                    </div>
+                 </div>
+              </div>
+            </>
+          )}
+
+          {isSpectator && showHistory && (
+            <div className="bg-black/40 border border-white/10 rounded-[32px] p-5 flex flex-col min-h-[300px] max-h-[400px] animate-in fade-in slide-in-from-top-4 duration-300">
+               <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-400">Trick History</h3>
+                  <button onClick={() => setShowHistory(false)} className="text-white/20 hover:text-white transition-colors">
+                     <X size={14} />
+                  </button>
+               </div>
+               
+               <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar">
+                  {room.trickHistory.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-center p-6">
+                        <p className="text-[10px] font-bold text-white/20 italic uppercase tracking-widest leading-loose">No tricks played yet in this round</p>
+                    </div>
+                  ) : (
+                    [...room.trickHistory].reverse().map((trick: any, i: number) => (
+                        <div key={i} className="bg-white/5 border border-white/5 p-3 rounded-2xl">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-[8px] font-black text-emerald-400 uppercase tracking-tighter">Winner: {trick.winnerName}</span>
+                                <span className="text-[8px] font-black text-yellow-500">+{trick.points} pts</span>
+                            </div>
+                            <div className="flex gap-1.5 justify-center">
+                                {trick.cards.map((c: any, ci: number) => (
+                                    <div key={ci} className="scale-75 origin-center">
+                                        <Card card={c} small disabled />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))
+                  )}
+               </div>
             </div>
           )}
 
-          <div className="bg-white/5 border border-white/10 rounded-[32px] p-5 flex flex-col flex-1 min-h-0">
+          <div className="bg-white/5 border border-white/10 rounded-[32px] p-5 flex flex-col flex-1 min-h-0 backdrop-blur-md -webkit-backdrop-blur-md">
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-4 flex justify-between items-center">
-              Match Progress
-              <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full">v1.2</span>
+              Room Analysis
+              <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">v1.3.2</span>
             </h3>
             
-            <div className={`grid grid-cols-2 text-center border-b border-white/10 pb-2 mb-4`}>
-              <div className="text-[10px] font-black text-emerald-400 uppercase tracking-widest truncate px-1">
-                {is2P ? (room.players[0]?.name || 'P1') : 'TEAM RED'}
+            <div className={`grid grid-cols-2 gap-4 text-center border-b border-white/10 pb-6 mb-6`}>
+              <div className="relative group p-1">
+                <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-1 truncate opacity-70">
+                  {is2P ? (room.players[0]?.name || 'P1') : 'TEAM RED'}
+                </p>
+                <div className="flex items-baseline justify-center gap-1">
+                    <motion.p 
+                        key={room.scores[0]}
+                        initial={{ y: 5, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        className="text-3xl font-black tabular-nums tracking-tighter"
+                    >
+                        {room.scores[0]}
+                    </motion.p>
+                    <span className="text-[10px] font-bold text-white/20">pts</span>
+                </div>
+                <div className="mt-3 h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                    <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min(100, (room.scores[0] / (room.mode === '2_PLAYER' ? 1200 : 660)) * 100)}%` }}
+                        className="h-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+                        transition={{ type: 'spring', damping: 15 }}
+                    />
+                </div>
               </div>
-              <div className="text-[10px] font-black text-orange-400 uppercase tracking-widest truncate px-1">
-                {is2P ? (room.players[1]?.name || 'P2') : 'TEAM BLUE'}
+              <div className="relative group p-1">
+                <p className="text-[9px] font-black text-orange-500 uppercase tracking-widest mb-1 truncate opacity-70">
+                   {is2P ? (room.players[1]?.name || 'P2') : 'TEAM BLUE'}
+                </p>
+                <div className="flex items-baseline justify-center gap-1">
+                    <motion.p 
+                        key={room.scores[1]}
+                        initial={{ y: 5, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        className="text-3xl font-black tabular-nums tracking-tighter"
+                    >
+                        {room.scores[1]}
+                    </motion.p>
+                    <span className="text-[10px] font-bold text-white/20">pts</span>
+                </div>
+                <div className="mt-3 h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/5">
+                    <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${Math.min(100, (room.scores[1] / (room.mode === '2_PLAYER' ? 1200 : 660)) * 100)}%` }}
+                        className="h-full bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.3)]"
+                        transition={{ type: 'spring', damping: 15 }}
+                    />
+                </div>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto space-y-4 pr-1 custom-scrollbar">
+            <div className="flex-1 overflow-y-auto space-y-5 pr-1 custom-scrollbar">
+                {/* Round Performance Card */}
+                {room.phase !== 'LOBBY' && (
+                    <div className="bg-black/30 rounded-2xl p-4 border border-white/5 space-y-4">
+                        <div className="flex justify-between items-center mb-1">
+                            <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">Round Points</span>
+                            <div className="flex items-center gap-2">
+                                <span className={`w-1.5 h-1.5 rounded-full ${room.phase === 'PLAYING' ? 'bg-emerald-500 animate-pulse' : 'bg-white/20'}`} />
+                                <span className="text-[8px] font-black text-white/30 uppercase">LIVE</span>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            {/* Team 0 Round Score */}
+                            <div className="space-y-1.5">
+                                <div className="flex justify-between text-[10px] font-black uppercase">
+                                    <span className="text-emerald-500 opacity-60 truncate max-w-[80px]">
+                                        {is2P ? (room.players[0]?.name || 'P1') : 'Team Red'}
+                                    </span>
+                                    <span className="text-white tabular-nums">{room.pointsThisRound[0]} / 165</span>
+                                </div>
+                                <div className="h-2 bg-white/5 rounded-full overflow-hidden p-[1px]">
+                                    <motion.div 
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${(room.pointsThisRound[0] / 165) * 100}%` }}
+                                        className="h-full bg-emerald-500 rounded-full"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Team 1 Round Score */}
+                            <div className="space-y-1.5">
+                                <div className="flex justify-between text-[10px] font-black uppercase">
+                                    <span className="text-orange-500 opacity-60 truncate max-w-[80px]">
+                                        {is2P ? (room.players[1]?.name || 'P2') : 'Team Blue'}
+                                    </span>
+                                    <span className="text-white tabular-nums">{room.pointsThisRound[1]} / 165</span>
+                                </div>
+                                <div className="h-2 bg-white/5 rounded-full overflow-hidden p-[1px]">
+                                    <motion.div 
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${(room.pointsThisRound[1] / 165) * 100}%` }}
+                                        className="h-full bg-orange-500 rounded-full"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Bid Progress (Specific to bidder) */}
+                        {room.highestBid.bidderId && (
+                            <div className="pt-2 border-t border-white/5">
+                                <div className="flex justify-between items-center text-[8px] font-black uppercase tracking-widest text-white/20">
+                                    <span>Bidder Goal ({room.highestBid.value})</span>
+                                    {(() => {
+                                        const bidderTeam = room.players.find((p:any) => p.id === room.highestBid.bidderId)?.team;
+                                        const progress = room.pointsThisRound[bidderTeam];
+                                        const isMet = progress >= room.highestBid.value;
+                                        return <span className={isMet ? 'text-emerald-400' : 'text-rose-400'}>{isMet ? 'GOAL MET' : `${room.highestBid.value - progress} LEFT`}</span>;
+                                    })()}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+
                 {/* Individual Player Stats Card */}
                 <div className="space-y-2">
-                  <p className="text-[10px] font-black uppercase text-white/30 tracking-widest ml-1 mb-2">Player Performances</p>
+                  <div className="flex justify-between items-center px-1 mb-2">
+                    <p className="text-[10px] font-black uppercase text-white/20 tracking-widest italic">Performance Metrics</p>
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  </div>
                   {room.players.map((p: any) => {
                     const winRate = p.stats?.games > 0 ? ((p.stats.wins / p.stats.games) * 100).toFixed(0) : 0;
+                    const isTurn = room.players.findIndex((player: any) => player.id === p.id) === room.currentTurn;
                     return (
-                      <div key={p.id} className="bg-white/5 rounded-2xl p-3 border border-white/5 flex items-center justify-between group hover:bg-white/10 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full overflow-hidden border border-white/20">
-                            <PlayerAvatar avatar={p.avatar || '🧔'} />
-                          </div>
-                          <div>
-                            <p className="text-[10px] font-bold text-white leading-none mb-1">{p.name}</p>
-                            <p className="text-[8px] font-mono text-emerald-400 opacity-60">ID: {p.id.slice(0, 6)}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 text-right">
-                          <div>
-                             <p className="text-[8px] text-white/40 uppercase font-black">Win Rate</p>
-                             <p className="text-[10px] font-black text-yellow-500">{winRate}%</p>
-                          </div>
-                          <div className="w-px h-6 bg-white/10" />
-                          <div>
-                             <p className="text-[8px] text-white/40 uppercase font-black">Games</p>
-                             <p className="text-[10px] font-black text-white">{p.stats?.games || 0}</p>
-                          </div>
+                      <div key={p.id} className={`bg-white/5 rounded-2xl p-3 border transition-all ${isTurn ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-white/5 hover:bg-white/10'}`}>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className={`w-8 h-8 rounded-full overflow-hidden border ${isTurn ? 'border-emerald-500' : 'border-white/10'}`}>
+                                    <PlayerAvatar avatar={p.avatar || '🧔'} />
+                                </div>
+                                <div>
+                                    <p className={`text-[10px] font-bold leading-none mb-1 ${isTurn ? 'text-emerald-400' : 'text-white'}`}>{p.name}</p>
+                                    <p className="text-[8px] font-mono text-white/20">Hand: {p.cards.length} cards</p>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <p className="text-[10px] font-black text-emerald-400">{winRate}%</p>
+                                <p className="text-[8px] uppercase font-black text-white/20">Wins</p>
+                            </div>
                         </div>
                       </div>
                     );
@@ -1016,6 +1248,49 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
       {/* Overlays */}
       <AnimatePresence>
+        {showNews && (
+            <Modal title="Deep Shelem News" onClose={() => setShowNews(false)} density="COMPACT">
+                <div className="space-y-6">
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <span className="bg-emerald-500 text-black text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">v1.3.2</span>
+                            <span className="text-[10px] font-bold text-white/20">TODAY</span>
+                        </div>
+                        <h3 className="text-white font-black text-lg">Broadcast Perspective & History</h3>
+                        <div className="space-y-3">
+                            <div className="flex gap-3">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                                <p className="text-xs text-white/60 leading-relaxed"><span className="text-white font-bold">Spectator Camera:</span> Followers can now choose which player's perspective to watch from the sidebar.</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                                <p className="text-xs text-white/60 leading-relaxed"><span className="text-white font-bold">Match History:</span> Spectators can now see a full log of every trick played in the current round.</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                                <p className="text-xs text-white/60 leading-relaxed"><span className="text-white font-bold">Card Scaling:</span> Added a new setting to adjust the playing card sizes (Small, Medium, Large).</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
+                                <p className="text-xs text-white/60 leading-relaxed"><span className="text-white font-bold">Visual Fixes:</span> Improved player profile cards and UI consistency across devices.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 bg-yellow-500/5 border border-yellow-500/10 rounded-2xl">
+                        <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-1 italic">Coming Soon</p>
+                        <p className="text-xs text-white/40 leading-normal italic">Ranked matches, team voice chat, and custom table themes are under development!</p>
+                    </div>
+
+                    <button 
+                        onClick={() => setShowNews(false)}
+                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-black font-black rounded-2xl shadow-lg transition-all uppercase tracking-widest text-xs"
+                    >
+                        Awesome!
+                    </button>
+                </div>
+            </Modal>
+        )}
         {showRules && (
             <Modal title="Game Rules" onClose={() => setShowRules(false)} density="COMPACT">
                 <div className="grid grid-cols-2 gap-4 md:gap-6 text-[10px] md:text-sm leading-relaxed text-white/80">
@@ -1071,6 +1346,8 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                                     { id: 'rose', color: '#f43f5e' },
                                     { id: 'amber', color: '#f59e0b' },
                                     { id: 'midnight', color: '#818cf8' },
+                                    { id: 'purple', color: '#a855f7' },
+                                    { id: 'teal', color: '#14b8a6' },
                                 ].map(theme => (
                                     <button
                                         key={theme.id}
@@ -1123,6 +1400,22 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                       </div>
 
                       <div className="p-4 bg-white/5 rounded-2xl border border-white/5 space-y-2">
+                          <label className="block text-[10px] font-black uppercase text-white/40 mb-1 italics tracking-widest">Display</label>
+                          <div className="space-y-1">
+                              <p className="text-[8px] font-black uppercase text-white/20 tracking-widest ml-1">Card Dimensions</p>
+                              <div className="grid grid-cols-3 gap-1.5">
+                                 {(['small', 'medium', 'large'] as const).map(size => (
+                                     <button 
+                                         key={size}
+                                         onClick={() => setCardSize(size)}
+                                         className={`py-1.5 rounded-lg border transition-all font-bold text-[7px] uppercase tracking-tighter ${cardSize === size ? 'border-white bg-white/20 text-white' : 'border-white/5 bg-black/20 text-white/40'}`}
+                                     >
+                                         {size}
+                                     </button>
+                                 ))}
+                              </div>
+                          </div>
+                          <div className="h-px bg-white/5 my-2" />
                           <label className="block text-[10px] font-black uppercase text-white/40 mb-1 italics tracking-widest">Toggles</label>
                           <Toggle label="Sound" value={soundEnabled} onChange={setSoundEnabled} icon={<Volume2 size={12} />} />
                           <Toggle label="Hints" value={showPossiblePlays} onChange={setShowPossiblePlays} icon={<Eye size={12} />} />
@@ -1134,12 +1427,21 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                       <div className="bg-black/30 p-4 rounded-2xl border border-white/5">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-[8px] font-black text-white/30 uppercase">Build Info</span>
-                            <span className="text-[8px] font-black text-emerald-400 uppercase">v1.2.7 Stable</span>
+                            <span className="text-[8px] font-black text-emerald-400 uppercase">v1.3.2 Stable</span>
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-[8px] font-black text-white/30 uppercase">Region</span>
                             <span className="text-[8px] font-black text-white/60 uppercase">Global (SSL)</span>
                         </div>
+                      </div>
+
+                      <div className="space-y-2">
+                         <button 
+                            onClick={toggleFullscreen}
+                            className={`w-full py-2.5 rounded-xl font-black uppercase tracking-widest transition-all border text-[9px] flex items-center justify-center gap-2 ${isFullscreen ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10'}`}
+                         >
+                            {isFullscreen ? 'Exit Full Screen' : 'Go Full Screen'}
+                         </button>
                       </div>
 
                       <div className="flex flex-col gap-2">
@@ -1188,7 +1490,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
            </div>
         </div>
         <div className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.1em] md:tracking-[0.2em] opacity-60">
-          Deep Shelem v1.2.6
+          Deep Shelem v1.3.2
         </div>
       </footer>
     </div>
@@ -1203,7 +1505,7 @@ function Modal({ title, children, onClose, density = "COMFORT" }: any) {
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6"
         >
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm -webkit-backdrop-blur-sm" onClick={onClose} />
             <motion.div 
                 initial={{ scale: 0.9, y: 20 }}
                 animate={{ scale: 1, y: 0 }}
@@ -1262,7 +1564,7 @@ function BiddingOverlay({ room, isMyTurn, onBid, isLoading }: any) {
     const lastBidderName = lastBidderId ? room.players.find((p:any) => p.id === lastBidderId)?.name : 'No one';
 
     return (
-        <div className="bg-[#14452f]/95 backdrop-blur-2xl p-6 md:p-8 rounded-[30px] md:rounded-[40px] border border-white/10 shadow-2xl w-full max-w-[480px]">
+        <div className="bg-[#14452f]/95 backdrop-blur-2xl -webkit-backdrop-blur-2xl p-6 md:p-8 rounded-[30px] md:rounded-[40px] border border-white/10 shadow-2xl w-full max-w-[480px]">
             <h2 className="text-center text-[10px] font-black uppercase tracking-[0.2em] mb-4 md:mb-6 text-white/40">
                 {isMyTurn ? 'YOUR TURN TO BID' : 'WAITING FOR BIDS...'}
             </h2>
@@ -1348,7 +1650,7 @@ function DiscardOverlay({ selectedCards, onConfirm, isLoading }: any) {
     const selectedCount = selectedCards.length;
     
     return (
-        <div className="bg-[#14452f]/95 backdrop-blur-2xl p-6 md:p-8 rounded-[30px] md:rounded-[40px] border border-white/10 shadow-2xl w-full max-w-[440px]">
+        <div className="bg-[#14452f]/95 backdrop-blur-2xl -webkit-backdrop-blur-2xl p-6 md:p-8 rounded-[30px] md:rounded-[40px] border border-white/10 shadow-2xl w-full max-w-[440px]">
              <h2 className="text-center text-[10px] font-black uppercase tracking-[0.2em] mb-4 md:mb-6 text-yellow-500">
                 PICK TRUMP & DISCARD 4
             </h2>

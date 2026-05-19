@@ -43,6 +43,18 @@
   --game-primary: #4ade80; /* green-400 */
 }
 
+[data-theme="purple"] {
+  --game-bg: #1e1b4b;
+  --game-felt: #312e81;
+  --game-primary: #a855f7; /* purple-500 */
+}
+
+[data-theme="teal"] {
+  --game-bg: #042f2e;
+  --game-felt: #0d9488;
+  --game-primary: #14b8a6; /* teal-500 */
+}
+
 body {
   margin: 0;
   height: 100%;
@@ -50,5 +62,23 @@ body {
   flex-direction: column;
   overflow: hidden;
   background-color: var(--game-bg);
-  transition: background-color 0.5s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
