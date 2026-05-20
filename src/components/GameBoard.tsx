@@ -53,7 +53,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   const [showStats, setShowStats] = useState(false);
   const [showNews, setShowNews] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem('shelem_sound_enabled') === 'true');
   const [showPossiblePlays, setShowPossiblePlays] = useState(false);
   const [showReactions, setShowReactions] = useState(false);
   const [showEmojiBar, setShowEmojiBar] = useState(false);
@@ -70,6 +70,8 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [spectatorPerspective, setSpectatorPerspective] = useState(0);
   const [showHistory, setShowHistory] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'error' | 'info' | 'success' } | null>(null);
+  const [hidePlayerIds, setHidePlayerIds] = useState(() => localStorage.getItem('shelem_hide_player_ids') === 'true');
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -117,6 +119,25 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   }, [cardSize]);
 
   useEffect(() => {
+    localStorage.setItem('shelem_sound_enabled', String(soundEnabled));
+  }, [soundEnabled]);
+
+  const showToast = (message: string, type: 'error' | 'info' | 'success' = 'error') => {
+    setToast({ message, type });
+  };
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    localStorage.setItem('shelem_hide_player_ids', String(hidePlayerIds));
+  }, [hidePlayerIds]);
+
+  useEffect(() => {
     setIsActionLoading(false);
   }, [room.phase, room.currentTurn, room.currentTrick.length]);
 
@@ -131,7 +152,12 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
     });
 
     socket.on('resign_rejected', () => {
-      alert('Your teammate rejected the resignation.');
+      showToast('Your teammate rejected the resignation.', 'info');
+    });
+
+    socket.on('error_msg', (msg: string) => {
+      setIsActionLoading(false);
+      showToast(msg, 'error');
     });
 
     socket.on('player_reaction', ({ playerId, reaction }) => {
@@ -149,6 +175,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
       socket.off('resign_requested');
       socket.off('resign_rejected');
       socket.off('player_reaction');
+      socket.off('error_msg');
     };
   }, [socket]);
 
@@ -214,6 +241,26 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
       }
     } else if (isPlaying) {
       if (!isMyTurn) return;
+      
+      const allowed = getPossiblePlays();
+      const isCardAllowed = allowed.some((c: any) => c.suit === card.suit && c.rank === card.rank);
+      if (!isCardAllowed) {
+        const trick = room.currentTrick;
+        const suitNames: { [key: string]: string } = {
+          SPADES: 'Hokm/Spades ♠',
+          HEARTS: 'Hearts ♥',
+          DIAMONDS: 'Diamonds ♦',
+          CLUBS: 'Clubs ♣'
+        };
+        if (trick.length > 0) {
+          const leadSuitName = suitNames[trick[0].card.suit] || trick[0].card.suit;
+          showToast(`Must follow suit (${leadSuitName})! | باید از خال بازی شده (${leadSuitName}) بازی کنید!`, 'error');
+        } else {
+          showToast(`Invalid play! Check the suit constraints | بازی نامعتبر است.`, 'error');
+        }
+        return;
+      }
+
       setIsActionLoading(true);
       socket.emit('play_card', { roomId: room.id, card, fromPileIndex });
     }
@@ -443,6 +490,14 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                 <div className="scale-75"><Copy size={12} /></div>
             </button>
           </div>
+
+          {room.spectators && room.spectators.length > 0 && (
+            <div className="bg-emerald-500/10 hover:bg-emerald-500/20 px-2.5 md:px-3.5 py-1 md:py-2 rounded-full border border-emerald-500/20 flex items-center gap-1.5 text-emerald-400 select-none transition-all duration-300 shadow-[0_4px_12px_rgba(16,185,129,0.05)]" title={`${room.spectators.length} Spectator(s) watching`}>
+              <Eye size={14} className="animate-pulse shrink-0" />
+              <span className="text-xs font-black leading-none">{room.spectators.length}</span>
+              <span className="hidden sm:inline text-[8px] font-black uppercase tracking-wider opacity-60">Spectating</span>
+            </div>
+          )}
           <div className="flex gap-1 md:gap-2">
             {isSpectator && (
               <button 
@@ -593,6 +648,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                         card={trick.card} 
                         layoutId={`card-${trick.card.suit}-${trick.card.rank}`} 
                         highlighted={isFollowedPlayerCard}
+                        size={cardSize}
                     />
                   </motion.div>
                 );
@@ -823,7 +879,9 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                 <p className={`font-bold text-sm ${isTurn ? 'text-yellow-400' : 'text-white'}`}>
                   {player.name} {(!isSpectator && player.id === room.players[myIndex]?.id) ? '(YOU)' : ''}
                 </p>
-                <span className="text-[8px] font-mono text-white/30 bg-black/30 px-1 rounded">#{player.id.slice(0, 4)}</span>
+                {!hidePlayerIds && (
+                  <span className="text-[8px] font-mono text-white/30 bg-black/30 px-1 rounded">#{player.id.slice(0, 4)}</span>
+                )}
               </div>
             </div>
                 <div className={`
@@ -1249,44 +1307,69 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
       {/* Overlays */}
       <AnimatePresence>
         {showNews && (
-            <Modal title="Deep Shelem News" onClose={() => setShowNews(false)} density="COMPACT">
-                <div className="space-y-6">
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <span className="bg-emerald-500 text-black text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">v1.3.2</span>
-                            <span className="text-[10px] font-bold text-white/20">TODAY</span>
+            <Modal title="Deep Shelem Chronicle" onClose={() => setShowNews(false)} density="COMPACT">
+                <div className="space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
+                    {/* Latest Release */}
+                    <div className="space-y-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-3xl relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+                        <div className="flex items-center justify-between relative z-10">
+                            <span className="bg-emerald-500 text-black text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest leading-none shadow-md">v1.4.0 Stable</span>
+                            <span className="text-[10px] font-bold text-emerald-400">LATEST RELEASE</span>
                         </div>
-                        <h3 className="text-white font-black text-lg">Broadcast Perspective & History</h3>
-                        <div className="space-y-3">
+                        <h3 className="text-white font-black text-base relative z-10 uppercase tracking-wide">Client Guardians & Spectators</h3>
+                        <div className="space-y-3 text-xs text-white/75 leading-relaxed relative z-10">
                             <div className="flex gap-3">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
-                                <p className="text-xs text-white/60 leading-relaxed"><span className="text-white font-bold">Spectator Camera:</span> Followers can now choose which player's perspective to watch from the sidebar.</p>
+                                <div className="p-1 rounded bg-rose-500/20 text-rose-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0">BUG FIX</div>
+                                <p><span className="text-white font-bold">Active Shield for Follow-Suit:</span> Select cards freely again after choosing an invalid card. Re-selection is instantly unlocked with a friendly banner reminder, preventing any turn lockups.</p>
                             </div>
                             <div className="flex gap-3">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
-                                <p className="text-xs text-white/60 leading-relaxed"><span className="text-white font-bold">Match History:</span> Spectators can now see a full log of every trick played in the current round.</p>
+                                <div className="p-1 rounded bg-emerald-500/20 text-emerald-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0">NEW</div>
+                                <p><span className="text-white font-bold">Live Spectator Badge:</span> Real-time viewer count is now broadcast right next to the Room Code in the workspace header!</p>
                             </div>
                             <div className="flex gap-3">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
-                                <p className="text-xs text-white/60 leading-relaxed"><span className="text-white font-bold">Card Scaling:</span> Added a new setting to adjust the playing card sizes (Small, Medium, Large).</p>
-                            </div>
-                            <div className="flex gap-3">
-                                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 shrink-0" />
-                                <p className="text-xs text-white/60 leading-relaxed"><span className="text-white font-bold">Visual Fixes:</span> Improved player profile cards and UI consistency across devices.</p>
+                                <div className="p-1 rounded bg-teal-500/20 text-teal-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0">NEW</div>
+                                <p><span className="text-white font-bold">Privacy Toggle:</span> Added a new option to settings allowing players to hide or reveal Player hash IDs on the board layout.</p>
                             </div>
                         </div>
                     </div>
 
-                    <div className="p-4 bg-yellow-500/5 border border-yellow-500/10 rounded-2xl">
-                        <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-1 italic">Coming Soon</p>
-                        <p className="text-xs text-white/40 leading-normal italic">Ranked matches, team voice chat, and custom table themes are under development!</p>
+                    {/* Previous Release */}
+                    <div className="space-y-3 p-4 bg-white/5 border border-white/5 rounded-3xl relative overflow-hidden">
+                        <div className="flex items-center justify-between">
+                            <span className="bg-white/10 text-white/60 text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest leading-none">v1.3.2</span>
+                            <span className="text-[10px] font-bold text-white/30">PREVIOUS RELEASE</span>
+                        </div>
+                        <h3 className="text-white/80 font-black text-sm uppercase tracking-wide">Spectator Lens & Scaling</h3>
+                        <div className="space-y-2 text-xs text-white/50 leading-relaxed">
+                            <div className="flex gap-3">
+                                <div className="w-1.5 h-1.5 rounded-full bg-white/30 mt-1.5 shrink-0" />
+                                <p><span className="text-white/70 font-bold">Spectator Cameras:</span> Choose any active player's perspective from the sidebar control panel.</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="w-1.5 h-1.5 rounded-full bg-white/30 mt-1.5 shrink-0" />
+                                <p><span className="text-white/70 font-bold">Trick Log History:</span> Real-time scoreboard log showing exact plays of the previous 5 tricks.</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="w-1.5 h-1.5 rounded-full bg-white/30 mt-1.5 shrink-0" />
+                                <p><span className="text-white/70 font-bold">Responsive Card Scaling:</span> Configure card dimensions (Small, Medium, Large) directly from settings.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Upcoming */}
+                    <div className="p-4 bg-yellow-500/5 border border-yellow-500/10 rounded-2xl flex gap-3 items-center">
+                        <span className="text-xl">🚀</span>
+                        <div>
+                            <p className="text-[9px] font-black text-yellow-500 uppercase tracking-widest leading-none mb-1">Coming Next</p>
+                            <p className="text-[11px] text-white/40 leading-normal font-medium leading-tight">Ranked multiplayer leagues, custom profile cards, and team voice communication are coming up!</p>
+                        </div>
                     </div>
 
                     <button 
                         onClick={() => setShowNews(false)}
-                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-black font-black rounded-2xl shadow-lg transition-all uppercase tracking-widest text-xs"
+                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-400 text-black font-black rounded-2xl shadow-lg transition-all uppercase tracking-[0.2em] text-[10px] shrink-0"
                     >
-                        Awesome!
+                        Acknowledge & Play
                     </button>
                 </div>
             </Modal>
@@ -1420,6 +1503,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                           <Toggle label="Sound" value={soundEnabled} onChange={setSoundEnabled} icon={<Volume2 size={12} />} />
                           <Toggle label="Hints" value={showPossiblePlays} onChange={setShowPossiblePlays} icon={<Eye size={12} />} />
                           <Toggle label="Chat" value={showChat} onChange={setShowChat} icon={<span className="text-[10px]">💬</span>} />
+                          <Toggle label="Hide Player IDs" value={hidePlayerIds} onChange={setHidePlayerIds} icon={<span className="text-xs font-mono">#</span>} />
                       </div>
                     </div>
 
@@ -1427,7 +1511,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                       <div className="bg-black/30 p-4 rounded-2xl border border-white/5">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-[8px] font-black text-white/30 uppercase">Build Info</span>
-                            <span className="text-[8px] font-black text-emerald-400 uppercase">v1.3.2 Stable</span>
+                            <span className="text-[8px] font-black text-emerald-400 uppercase">v1.4.0 Stable</span>
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-[8px] font-black text-white/30 uppercase">Region</span>
@@ -1474,6 +1558,42 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                     </div>
                 </div>
             </Modal>
+        )}
+      </AnimatePresence>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 350 }}
+            className="fixed top-24 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none"
+          >
+            <div className={`
+              px-6 py-3.5 rounded-full border backdrop-blur-md shadow-2xl flex items-center gap-3 active:scale-95 transition-transform duration-100 pointer-events-auto cursor-pointer
+              ${toast.type === 'error' ? 'bg-red-950/95 border-red-500/30 text-red-100 shadow-red-500/10' : ''}
+              ${toast.type === 'success' ? 'bg-emerald-950/95 border-emerald-500/30 text-emerald-100 shadow-emerald-500/10' : ''}
+              ${toast.type === 'info' ? 'bg-zinc-950/95 border-white/10 text-zinc-100 shadow-white/5' : ''}
+            `}
+              onClick={() => setToast(null)}
+            >
+              <div className={`
+                w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0
+                ${toast.type === 'error' ? 'bg-red-500/20 text-red-400' : ''}
+                ${toast.type === 'success' ? 'bg-emerald-500/20 text-emerald-400' : ''}
+                ${toast.type === 'info' ? 'bg-white/10 text-white/60' : ''}
+              `}>
+                {toast.type === 'error' && '✕'}
+                {toast.type === 'success' && '✓'}
+                {toast.type === 'info' && 'i'}
+              </div>
+              <p className="text-xs md:text-sm font-black tracking-wide leading-none select-none">
+                {toast.message}
+              </p>
+            </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
