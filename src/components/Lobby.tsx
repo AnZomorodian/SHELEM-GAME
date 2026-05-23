@@ -2,6 +2,27 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Club, Diamond, Heart, Spade, Users, Play, Upload, User, Lock, LogIn, UserPlus } from 'lucide-react';
 
+export function VerifiedBadge({ size = 16 }: { size?: number }) {
+  return (
+    <svg 
+      className="inline-block shrink-0 animate-in zoom-in duration-300" 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <path 
+        d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.99-3.818-3.99-.47 0-.915.085-1.328.235C14.79 2.5 13.518 1.5 12 1.5c-1.517 0-2.79 1-3.442 2.245-.413-.15-.858-.235-1.328-.235C5.12 3.51 3.41 5.29 3.41 7.5c0 .495.084.965.238 1.4C2.375 9.55 1.5 10.92 1.5 12.5c0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.71 3.99 3.818 3.99.47 0 .915-.085 1.328-.235C9.21 22.5 10.482 23.5 12 23.5c1.517 0 2.79-1 3.442-2.245.413.15.858.235 1.328.235 2.108 0 3.818-1.78 3.818-3.99 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6z" 
+        fill="#3b82f6" 
+      />
+      <path 
+        d="M9.707 14.293L7.414 12a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l7-7a1 1 0 00-1.414-1.414l-6.293 6.293z" 
+        fill="white" 
+      />
+    </svg>
+  );
+}
+
 interface LobbyProps {
   onCreate: (name: string, mode: '2_PLAYER' | '4_PLAYER', avatar: string) => void;
   onJoin: (name: string, roomId: string, avatar: string, asSpectator?: boolean) => void;
@@ -25,6 +46,11 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
   const [uploading, setUploading] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [promoPass, setPromoPass] = useState('');
+  const [isVerifyingPromo, setIsVerifyingPromo] = useState(false);
+  const [promoError, setPromoError] = useState('');
+  const [promoSuccess, setPromoSuccess] = useState(false);
 
   const [roomId, setRoomId] = useState('');
   const [mode, setMode] = useState<'INITIAL' | 'CREATE' | 'JOIN'>('INITIAL');
@@ -158,11 +184,40 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
     }
   };
 
+  const handlePromotionVerify = async () => {
+    if (!user) return;
+    setIsVerifyingPromo(true);
+    setPromoError('');
+    setPromoSuccess(false);
+    try {
+      const res = await fetch('/api/verify-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, password: promoPass })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPromoSuccess(true);
+        const updatedUser = { ...user, isVerified: true };
+        setUser(updatedUser);
+        localStorage.setItem('deep_shelem_user', JSON.stringify(updatedUser));
+        setPromoPass('');
+      } else {
+        setPromoError(data.error || 'Failed to verify verification passcode.');
+      }
+    } catch (err) {
+      console.error('Verify promo error:', err);
+      setPromoError('Network error. Try again.');
+    } finally {
+      setIsVerifyingPromo(false);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     const displayName = user.username;
-    const avatar = user.avatar || '🧔'; // Fallback if no upload
+    const avatar = user.avatar || '👤'; // Fallback if no upload
     if (mode === 'CREATE') onCreate(displayName, gameMode, avatar);
     else if (mode === 'JOIN' && roomId) onJoin(displayName, roomId, avatar, false);
   };
@@ -289,7 +344,10 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
         
         <div className="flex flex-col items-center">
-            <h1 className="text-2xl font-black text-white uppercase tracking-tighter leading-none mb-1">{user.username}</h1>
+            <h1 className="text-2xl font-black text-white uppercase tracking-tighter leading-none mb-1 flex items-center justify-center gap-1.5 align-middle">
+              {user.username}
+              {user.isVerified && <VerifiedBadge size={18} />}
+            </h1>
             <p className={`text-[10px] font-black tracking-[0.2em] uppercase ${rank.color}`}>{rank.name}</p>
         </div>
 
@@ -344,7 +402,10 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
                                 )}
                             </div>
                             <div>
-                                <p className="text-white font-black text-2xl tracking-tighter uppercase leading-tight">{user.username}</p>
+                                <p className="text-white font-black text-2xl tracking-tighter uppercase leading-tight flex items-center gap-1.5">
+                                    {user.username}
+                                    {user.isVerified && <VerifiedBadge size={20} />}
+                                </p>
                                 <div className="flex items-center gap-2 mt-1">
                                     <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-black/60 border border-white/10 ${rank.color}`}>
                                         {rank.name}
@@ -400,6 +461,49 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
                             </div>
                         </div>
                     </div>
+
+                    <div className="bg-black/60 rounded-[2rem] border border-white/10 p-6 space-y-4 shadow-xl">
+                        <label className="block text-[10px] font-black uppercase text-white/20 tracking-widest italic ml-1 flex items-center gap-1.5">
+                            <span className="text-yellow-400">★</span> VERIFY ACCOUNT STATUS
+                        </label>
+                        <div className="space-y-4">
+                            {user.isVerified ? (
+                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/10 rounded-2xl flex items-center gap-3">
+                                    <VerifiedBadge size={28} />
+                                    <div>
+                                        <p className="text-[11px] font-black uppercase tracking-wider text-emerald-400">Verified Player Status Active</p>
+                                        <p className="text-[8px] uppercase tracking-wider text-white/40 leading-normal mt-0.5">Your official checkmark has been fully applied. Your title is highlighted across all live sessions.</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex justify-between items-center px-1">
+                                        <label className="text-[9px] font-black uppercase text-white/40 leading-none">Promotion Keyphrase:</label>
+                                        <span className="text-[7px] text-yellow-400 bg-yellow-400/5 px-2 py-0.5 rounded border border-yellow-400/10 font-bold uppercase">PRO DEMAND</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <input 
+                                            type="password"
+                                            value={promoPass}
+                                            onChange={(e) => setPromoPass(e.target.value)}
+                                            placeholder="Enter passcode"
+                                            className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-yellow-500 outline-none transition-all flex-1 font-bold shadow-inner font-mono tracking-widest text-center"
+                                        />
+                                        <button 
+                                            type="button"
+                                            onClick={handlePromotionVerify}
+                                            disabled={isVerifyingPromo || !promoPass}
+                                            className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black text-[10px] font-black px-6 rounded-xl transition-all uppercase tracking-widest shadow-lg active:scale-95 flex items-center justify-center min-w-[80px]"
+                                        >
+                                            {isVerifyingPromo ? '...' : 'Verify'}
+                                        </button>
+                                    </div>
+                                    {promoError && <p className="text-[8px] font-black uppercase tracking-wider text-rose-400 ml-1 mt-1">{promoError}</p>}
+                                    {promoSuccess && <p className="text-[8px] font-black uppercase tracking-wider text-emerald-400 ml-1 mt-1">Verified with success!</p>}
+                                </div>
+                            )}
+                        </div>
+                    </div>
                 </div>
 
                 <div className="mt-6 shrink-0">
@@ -436,7 +540,7 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
             {lastRoomId && (
                 <button
                     type="button"
-                    onClick={() => onJoin(user.username, lastRoomId, user.avatar || '🧔')}
+                    onClick={() => onJoin(user.username, lastRoomId, user.avatar || '👤')}
                     className="col-span-2 py-4 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-2xl border border-emerald-500/20 flex items-center justify-center gap-3 transition-all"
                 >
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
@@ -486,7 +590,7 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
               </button>
             </div>
             {mode === 'JOIN' && (
-              <button type="button" onClick={() => onJoin(user.username, roomId, user.avatar || '🧔', true)} className="w-full py-3 px-4 rounded-2xl bg-white/5 hover:bg-white/10 text-white/40 font-bold uppercase text-[9px] tracking-widest border border-white/5">Spectate Game</button>
+              <button type="button" onClick={() => onJoin(user.username, roomId, user.avatar || '👤', true)} className="w-full py-3 px-4 rounded-2xl bg-white/5 hover:bg-white/10 text-white/40 font-bold uppercase text-[9px] tracking-widest border border-white/5">Spectate Game</button>
             )}
           </div>
         )}

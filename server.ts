@@ -83,6 +83,7 @@ interface Player {
   socketId: string;
   cards: Card[];
   team: 0 | 1; 
+  isVerified?: boolean;
   stats?: {
     wins: number;
     losses: number;
@@ -104,7 +105,7 @@ interface Room {
   id: string;
   mode: '2_PLAYER' | '4_PLAYER';
   players: Player[];
-  spectators: { id: string; name: string; avatar: string; socketId: string }[];
+  spectators: { id: string; name: string; avatar: string; socketId: string; isVerified?: boolean }[];
   phase: GamePhase;
   subPhase?: 'HAND' | 'PILE'; // For 2-player mode
   currentTurn: number; 
@@ -122,9 +123,14 @@ interface Room {
   roundCount: number;
   trickHistory: { winnerName: string; cards: Card[]; points: number }[];
   resignRequest?: { requesterId: string; status: 'PENDING' | 'REJECTED' };
+  turnStartedAt?: number;
+  turnDuration?: number;
 }
 
 const rooms: Map<string, Room> = new Map();
+let ioInstance: any = null;
+const roomTimers = new Map<string, NodeJS.Timeout>();
+let resolveRoundRef: ((room: Room) => void) | null = null;
 
 async function startServer() {
   const app = express();
@@ -149,7 +155,8 @@ async function startServer() {
         password: hashedPassword, 
         email: email || '',
         avatar: null,
-        stats: { wins: 0, losses: 0, games: 0, highestScore: 0 }
+        stats: { wins: 0, losses: 0, games: 0, highestScore: 0 },
+        isVerified: false
       };
       users.push(newUser);
       saveUsers(users);
@@ -175,7 +182,8 @@ async function startServer() {
         username: user.username, 
         email: user.email || '',
         avatar: user.avatar,
-        stats: user.stats || { wins: 0, losses: 0, games: 0, highestScore: 0 }
+        stats: user.stats || { wins: 0, losses: 0, games: 0, highestScore: 0 },
+        isVerified: user.isVerified || false
       });
     } catch (err) {
       console.error('Login error:', err);
@@ -192,12 +200,34 @@ async function startServer() {
       if (user) {
         user.email = email;
         saveUsers(users);
-        res.json({ success: true, email: user.email });
+        res.json({ success: true, email: user.email, isVerified: user.isVerified || false });
       } else {
         res.status(404).json({ error: 'User not found' });
       }
     } catch (err) {
       console.error('Update profile error:', err);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
+
+  app.post('/api/verify-profile', async (req, res) => {
+    try {
+      const { userId, password } = req.body;
+      if (password !== 'CoMoBoBiaShelem') {
+        return res.status(400).json({ error: 'Incorrect verification passcode.' });
+      }
+      const users = getUsers();
+      const user = users.find((u: any) => u.id === userId);
+      
+      if (user) {
+        user.isVerified = true;
+        saveUsers(users);
+        res.json({ success: true, isVerified: true });
+      } else {
+        res.status(404).json({ error: 'User not found' });
+      }
+    } catch (err) {
+      console.error('Verify profile error:', err);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -227,6 +257,7 @@ async function startServer() {
   const io = new Server(httpServer, {
     cors: { origin: '*' }
   });
+  ioInstance = io;
 
   if (!IS_PROD) {
     const vite = await createViteServer({
@@ -241,7 +272,61 @@ async function startServer() {
     });
   }
 
+  function onGameOver(room: Room, winningTeam: number) {
+    room.phase = GamePhase.GAME_OVER;
+    
+    // Save game result
+    saveGameResult({ scores: room.scores, players: room.players.map(p => p.name) });
+
+    try {
+      const users = getUsers();
+      let updatedAny = false;
+
+      room.players.forEach(player => {
+        const u = users.find((x: any) => x.id === player.id);
+        if (u) {
+          if (!u.stats) {
+            u.stats = { wins: 0, losses: 0, games: 0, highestScore: 0 };
+          }
+          u.stats.games = (u.stats.games || 0) + 1;
+          if (player.team === winningTeam) {
+            u.stats.wins = (u.stats.wins || 0) + 1;
+          } else {
+            u.stats.losses = (u.stats.losses || 0) + 1;
+          }
+
+          // Update highestScore if player's bid in this room is higher
+          const playerHighestBid = room.highestBid?.bidderId === player.id ? room.highestBid.value : 0;
+          if (playerHighestBid > (u.stats.highestScore || 0)) {
+            u.stats.highestScore = playerHighestBid;
+          }
+
+          player.stats = { ...u.stats };
+          updatedAny = true;
+        } else {
+          // Update stats for guest / unregistered players so that they are synchronized as well
+          if (!player.stats) {
+            player.stats = { wins: 0, losses: 0, games: 0, highestScore: 0 };
+          }
+          player.stats.games = (player.stats.games || 0) + 1;
+          if (player.team === winningTeam) {
+            player.stats.wins = (player.stats.wins || 0) + 1;
+          } else {
+            player.stats.losses = (player.stats.losses || 0) + 1;
+          }
+        }
+      });
+
+      if (updatedAny) {
+        saveUsers(users);
+      }
+    } catch (err) {
+      console.error('Error updating player stats on game over:', err);
+    }
+  }
+
   function resolveRound(room: Room) {
+    resolveRoundRef = resolveRound;
     const hakamId = room.highestBid.bidderId!;
     const hakamTeam = room.players.find(p => p.id === hakamId)!.team;
     const otherTeam = hakamTeam === 0 ? 1 : 0;
@@ -273,8 +358,8 @@ async function startServer() {
 
     const WINNING_SCORE = room.mode === '2_PLAYER' ? 1200 : 660; 
     if (room.scores[0] >= WINNING_SCORE || room.scores[1] >= WINNING_SCORE) {
-      room.phase = GamePhase.GAME_OVER;
-      saveGameResult({ scores: room.scores, players: room.players.map(p => p.name) });
+      const winningTeam = room.scores[0] >= WINNING_SCORE ? 0 : 1;
+      onGameOver(room, winningTeam);
     } else {
       room.phase = GamePhase.SCORING;
       setTimeout(() => {
@@ -293,11 +378,12 @@ async function startServer() {
       const users = getUsers();
       const user = users.find((u: any) => u.id === userId);
       const stats = user?.stats || { wins: 0, losses: 0, games: 0, highestScore: 0 };
+      const isVerified = user?.isVerified || false;
       
       const room: Room = {
         id: roomId,
         mode: mode || '4_PLAYER',
-        players: [{ id: userId || socket.id, name, avatar, socketId: socket.id, cards: [], team: 0, stats }],
+        players: [{ id: userId || socket.id, name, avatar, socketId: socket.id, cards: [], team: 0, stats, isVerified }],
         spectators: [],
         phase: GamePhase.LOBBY,
         currentTurn: 0,
@@ -326,10 +412,15 @@ async function startServer() {
       
       const maxPlayers = room.mode === '2_PLAYER' ? 2 : 4;
 
+      const users = getUsers();
+      const user = users.find((u: any) => u.id === userId);
+      const isVerified = user?.isVerified || false;
+
       // Rejoin logic
       const existingPlayer = room.players.find(p => p.id === userId);
       if (existingPlayer) {
         existingPlayer.socketId = socket.id;
+        existingPlayer.isVerified = isVerified;
         socket.join(roomId);
         socket.emit('player_joined', room);
         io.to(roomId).emit('game_update', room);
@@ -342,8 +433,9 @@ async function startServer() {
         let spectator = room.spectators.find(s => s.id === userId);
         if (spectator) {
            spectator.socketId = socket.id;
+           spectator.isVerified = isVerified;
         } else {
-           room.spectators.push({ id: userId || socket.id, name, avatar, socketId: socket.id });
+           room.spectators.push({ id: userId || socket.id, name, avatar, socketId: socket.id, isVerified });
         }
         socket.join(roomId);
         socket.emit('spectator_joined', room);
@@ -353,11 +445,9 @@ async function startServer() {
 
       const team: 0 | 1 = room.mode === '2_PLAYER' ? (room.players.length as 0 | 1) : ([0, 1, 0, 1][room.players.length] as 0 | 1);
       
-      const users = getUsers();
-      const user = users.find((u: any) => u.id === userId);
       const stats = user?.stats || { wins: 0, losses: 0, games: 0, highestScore: 0 };
 
-      const player: Player = { id: userId || socket.id, name, avatar, socketId: socket.id, cards: [], team, stats };
+      const player: Player = { id: userId || socket.id, name, avatar, socketId: socket.id, cards: [], team, stats, isVerified };
       room.players.push(player);
       socket.join(roomId);
       
@@ -366,6 +456,7 @@ async function startServer() {
       if (room.players.length === maxPlayers) {
         startNewRound(room);
         io.to(roomId).emit('game_start', room);
+        triggerGameUpdate(room);
       }
     });
 
@@ -399,7 +490,7 @@ async function startServer() {
           room.currentTurn = (room.currentTurn + 1) % playerCount;
         } while (room.bids[room.players[room.currentTurn].id] === 'PASS');
       }
-      io.to(roomId).emit('game_update', room);
+      triggerGameUpdate(room);
     });
 
     socket.on('select_hokm_and_discard', ({ roomId, hokm, discards }) => {
@@ -416,7 +507,7 @@ async function startServer() {
       hakam.cards.sort(sortCards);
       room.phase = GamePhase.PLAYING;
       room.subPhase = room.mode === '2_PLAYER' ? 'HAND' : undefined;
-      io.to(roomId).emit('game_update', room);
+      triggerGameUpdate(room);
     });
 
     socket.on('play_card', ({ roomId, card, fromPileIndex }) => {
@@ -505,7 +596,7 @@ async function startServer() {
               if (room.players.every(p => p.cards.length === 0 && room.piles[p.id].every(pile => pile.length === 0))) {
                 resolveRound(room);
               }
-              io.to(roomId).emit('game_update', room);
+              triggerGameUpdate(room);
             }, 1500);
           } else {
             room.currentTurn = (room.currentTurn + 1) % 2;
@@ -547,13 +638,13 @@ async function startServer() {
             if (room.players.every(p => p.cards.length === 0)) {
               resolveRound(room);
             }
-            io.to(roomId).emit('game_update', room);
+            triggerGameUpdate(room);
           }, 1500);
         } else {
           room.currentTurn = (room.currentTurn + 1) % 4;
         }
       }
-      io.to(roomId).emit('game_update', room);
+      triggerGameUpdate(room);
     });
 
     socket.on('send_message', ({ roomId, text }) => {
@@ -580,7 +671,7 @@ async function startServer() {
         const losingTeam = player.team;
         const winningTeam = losingTeam === 0 ? 1 : 0;
         room.scores[winningTeam] = 1200;
-        room.phase = GamePhase.GAME_OVER;
+        onGameOver(room, winningTeam);
         io.to(roomId).emit('game_update', room);
       } else {
         // 4 Player - Find teammate
@@ -601,13 +692,85 @@ async function startServer() {
         const losingTeam = room.players[playerIndex].team;
         const winningTeam = losingTeam === 0 ? 1 : 0;
         room.scores[winningTeam] = 660;
-        room.phase = GamePhase.GAME_OVER;
+        onGameOver(room, winningTeam);
         room.resignRequest = undefined;
       } else {
         room.resignRequest = undefined;
         io.to(roomId).emit('resign_rejected');
       }
       io.to(roomId).emit('game_update', room);
+    });
+
+    socket.on('kick_user', ({ roomId, targetUserId }) => {
+      const room = rooms.get(roomId);
+      if (!room) return;
+
+      // Determine if sender is host (players[0] is always the host/creator)
+      const isHostSender = room.players[0]?.socketId === socket.id;
+      if (!isHostSender) {
+        return socket.emit('error_msg', 'Only the room host can kick players.');
+      }
+
+      // Check players list
+      const playerIdx = room.players.findIndex(p => p.id === targetUserId);
+      if (playerIdx !== -1) {
+        // Host cannot kick themselves
+        if (playerIdx === 0) return;
+
+        const kickedPlayer = room.players[playerIdx];
+        room.players.splice(playerIdx, 1);
+        
+        // Notify the target client they were kicked
+        io.to(kickedPlayer.socketId).emit('kicked');
+
+        // Disconnect socket from standard room channel
+        const targetSocket = io.sockets.sockets.get(kickedPlayer.socketId);
+        if (targetSocket) {
+          targetSocket.leave(roomId);
+        }
+
+        // If in game, abort back to Lobby
+        if (room.phase !== GamePhase.LOBBY) {
+          room.phase = GamePhase.LOBBY;
+          room.highestBid = { value: 0, bidderId: null };
+          room.hokm = null;
+          room.centerCards = [];
+          room.currentTrick = [];
+          room.lastTrickWinnerId = null;
+          room.bids = {};
+          room.scores = { 0: 0, 1: 0 };
+          room.pointsThisRound = { 0: 0, 1: 0 };
+          room.trickHistory = [];
+          room.piles = {};
+          room.players.forEach((p, idx) => {
+            p.cards = [];
+            p.team = room.mode === '2_PLAYER' ? (idx as 0 | 1) : ([0, 1, 0, 1][idx] as 0 | 1);
+          });
+        } else {
+          // Re-balance teams in Lobby
+          room.players.forEach((p, idx) => {
+            p.team = room.mode === '2_PLAYER' ? (idx as 0 | 1) : ([0, 1, 0, 1][idx] as 0 | 1);
+          });
+        }
+
+        io.to(roomId).emit('game_update', room);
+        return;
+      }
+
+      // Check spectators list
+      const spectatorIdx = room.spectators.findIndex(s => s.id === targetUserId);
+      if (spectatorIdx !== -1) {
+        const kickedSpectator = room.spectators[spectatorIdx];
+        room.spectators.splice(spectatorIdx, 1);
+
+        io.to(kickedSpectator.socketId).emit('kicked');
+        const targetSocket = io.sockets.sockets.get(kickedSpectator.socketId);
+        if (targetSocket) {
+          targetSocket.leave(roomId);
+        }
+
+        io.to(roomId).emit('game_update', room);
+      }
     });
 
     socket.on('send_reaction', ({ roomId, reaction }) => {
@@ -758,6 +921,235 @@ function calculateTrickPoints(cards: Card[]): number {
     if (card.rank === 'A') pts += 10;
   }
   return pts;
+}
+
+function selectValidPlay(room: Room, playerCards: Card[]): Card {
+  if (playerCards.length === 0) return null as any;
+
+  // If leading the trick: 
+  if (room.currentTrick.length === 0) {
+    const isHakam = room.players[room.currentTurn].id === room.highestBid.bidderId;
+    const isFirstTrickOfRound = room.players.every(p => p.cards.length === 12);
+    if (room.mode === '2_PLAYER' && isFirstTrickOfRound && isHakam) {
+      const hokmCards = playerCards.filter(c => c.suit === room.hokm);
+      if (hokmCards.length > 0) return hokmCards[0];
+    }
+    return playerCards[0];
+  }
+
+  // Follow suit if possible
+  const leadSuit = room.currentTrick[0].card.suit;
+  const followSuitCards = playerCards.filter(c => c.suit === leadSuit);
+  if (followSuitCards.length > 0) {
+    return followSuitCards[0];
+  }
+
+  // Otherwise, play any card
+  return playerCards[0];
+}
+
+function handleTurnTimeout(room: Room) {
+  console.log(`[Timer Timeout] Room ${room.id} Turn ${room.currentTurn} (Phase: ${room.phase}) timed out.`);
+  
+  const activePlayer = room.players[room.currentTurn];
+  if (!activePlayer) return;
+
+  if (room.phase === GamePhase.BIDDING) {
+    // Auto-PASS!
+    room.bids[activePlayer.id] = 'PASS';
+    
+    const activeBidders = room.players.filter(p => room.bids[p.id] !== 'PASS');
+    const allResponded = room.players.every(p => room.bids[p.id] !== undefined);
+    
+    if (allResponded && (activeBidders.length <= 1 || room.highestBid.value === 165)) {
+      if (!room.highestBid.bidderId) {
+        startNewRound(room);
+      } else {
+        room.phase = GamePhase.DISCARDING;
+        room.currentTurn = room.players.findIndex(p => p.id === room.highestBid.bidderId);
+        room.players[room.currentTurn].cards.push(...room.centerCards);
+        room.players[room.currentTurn].cards.sort(sortCards);
+        room.centerCards = [];
+      }
+    } else {
+      const playerCount = room.mode === '2_PLAYER' ? 2 : 4;
+      do {
+        room.currentTurn = (room.currentTurn + 1) % playerCount;
+      } while (room.bids[room.players[room.currentTurn].id] === 'PASS');
+    }
+    
+    triggerGameUpdate(room);
+
+  } else if (room.phase === GamePhase.DISCARDING) {
+    // Auto-discard first 4 cards and set default hokm to HEARTS
+    const discards = activePlayer.cards.slice(0, 4);
+    room.hokm = 'HEARTS';
+    
+    const hakam = activePlayer;
+    const discardPoints = calculateTrickPoints(discards);
+    room.pointsThisRound[hakam.team] += discardPoints;
+    
+    hakam.cards = hakam.cards.filter(c => !discards.some((d: Card) => d.suit === c.suit && d.rank === c.rank));
+    hakam.cards.sort(sortCards);
+    room.phase = GamePhase.PLAYING;
+    room.subPhase = room.mode === '2_PLAYER' ? 'HAND' : undefined;
+    
+    triggerGameUpdate(room);
+
+  } else if (room.phase === GamePhase.PLAYING) {
+    if (room.mode === '2_PLAYER') {
+      if (room.subPhase === 'HAND') {
+        const validCard = selectValidPlay(room, activePlayer.cards);
+        if (validCard) {
+          const cardIndex = activePlayer.cards.findIndex(c => c.suit === validCard.suit && c.rank === validCard.rank);
+          activePlayer.cards.splice(cardIndex, 1);
+          room.currentTrick.push({ playerId: activePlayer.id, card: validCard, fromPile: false });
+
+          if (room.currentTrick.length === 2) {
+            room.subPhase = 'PILE';
+            const starterId = room.currentTrick[0].playerId;
+            room.currentTurn = room.players.findIndex(p => p.id === starterId);
+          } else {
+            room.currentTurn = (room.currentTurn + 1) % 2;
+          }
+          triggerGameUpdate(room);
+        }
+      } else if (room.subPhase === 'PILE') {
+        const topCardsWithIndices = room.piles[activePlayer.id]
+          .map((pile, idx) => ({ pile, idx, card: pile[pile.length - 1] }))
+          .filter(item => item.card !== undefined);
+
+        if (topCardsWithIndices.length > 0) {
+          const leadSuit = room.currentTrick[0]?.card?.suit;
+          let selected = topCardsWithIndices[0];
+          if (leadSuit) {
+            const followable = topCardsWithIndices.filter(t => t.card.suit === leadSuit);
+            if (followable.length > 0) {
+              selected = followable[0];
+            }
+          }
+          const { pile, card } = selected;
+          pile.pop();
+          room.currentTrick.push({ playerId: activePlayer.id, card, fromPile: true });
+
+          if (room.currentTrick.length === 4) {
+            const winnerId = resolveTrick(room);
+            const winnerIndex = room.players.findIndex(p => p.id === winnerId);
+            const trickPoints = calculateTrickPoints(room.currentTrick.map(t => t.card));
+            room.pointsThisRound[room.players[winnerIndex].team] += trickPoints;
+
+            room.trickHistory.push({
+              winnerName: room.players[winnerIndex].name,
+              cards: room.currentTrick.map(t => t.card),
+              points: trickPoints
+            });
+            if (room.trickHistory.length > 5) room.trickHistory.shift();
+
+            // Clear timer during transition
+            const existingTimer = roomTimers.get(room.id);
+            if (existingTimer) {
+              clearTimeout(existingTimer);
+              roomTimers.delete(room.id);
+            }
+            if (ioInstance) {
+              ioInstance.to(room.id).emit('game_update', room);
+            }
+
+            setTimeout(() => {
+              room.currentTrick = [];
+              room.currentTurn = winnerIndex;
+              room.subPhase = 'HAND';
+              if (room.players.every(p => p.cards.length === 0 && room.piles[p.id].every(p => p.length === 0))) {
+                resolveRoundRef?.(room);
+              }
+              triggerGameUpdate(room);
+            }, 1500);
+          } else {
+            room.currentTurn = (room.currentTurn + 1) % 2;
+            triggerGameUpdate(room);
+          }
+        }
+      }
+    } else {
+      // 4-PLAYER
+      const validCard = selectValidPlay(room, activePlayer.cards);
+      if (validCard) {
+        const cardIndex = activePlayer.cards.findIndex(c => c.suit === validCard.suit && c.rank === validCard.rank);
+        activePlayer.cards.splice(cardIndex, 1);
+        room.currentTrick.push({ playerId: activePlayer.id, card: validCard });
+
+        if (room.currentTrick.length === 4) {
+          const winnerId = resolveTrick(room);
+          const winnerIndex = room.players.findIndex(p => p.id === winnerId);
+          const trickPoints = calculateTrickPoints(room.currentTrick.map(t => t.card));
+          room.pointsThisRound[room.players[winnerIndex].team] += trickPoints;
+
+          room.trickHistory.push({
+            winnerName: room.players[winnerIndex].name,
+            cards: room.currentTrick.map(t => t.card),
+            points: trickPoints
+          });
+          if (room.trickHistory.length > 5) room.trickHistory.shift();
+
+          // Clear timer during transition
+          const existingTimer = roomTimers.get(room.id);
+          if (existingTimer) {
+            clearTimeout(existingTimer);
+            roomTimers.delete(room.id);
+          }
+          if (ioInstance) {
+            ioInstance.to(room.id).emit('game_update', room);
+          }
+
+          setTimeout(() => {
+            room.currentTrick = [];
+            room.currentTurn = winnerIndex;
+            if (room.players.every(p => p.cards.length === 0)) {
+              resolveRoundRef?.(room);
+            }
+            triggerGameUpdate(room);
+          }, 1500);
+        } else {
+          room.currentTurn = (room.currentTurn + 1) % 4;
+          triggerGameUpdate(room);
+        }
+      }
+    }
+  }
+}
+
+function triggerGameUpdate(room: Room) {
+  // Clear any existing timer for this room
+  const existingTimer = roomTimers.get(room.id);
+  if (existingTimer) {
+    clearTimeout(existingTimer);
+    roomTimers.delete(room.id);
+  }
+
+  // Determine if player timer should run
+  const activePhases = [GamePhase.BIDDING, GamePhase.DISCARDING, GamePhase.PLAYING];
+  const isResolution = room.mode === '2_PLAYER' ? 
+    (room.subPhase === 'HAND' ? room.currentTrick.length === 2 : room.currentTrick.length === 4) : 
+    room.currentTrick.length === 4;
+
+  if (activePhases.includes(room.phase) && !isResolution && room.players.length > 0) {
+    room.turnDuration = 30000;
+    room.turnStartedAt = Date.now();
+
+    const timer = setTimeout(() => {
+      handleTurnTimeout(room);
+    }, room.turnDuration);
+
+    roomTimers.set(room.id, timer);
+  } else {
+    delete room.turnDuration;
+    delete room.turnStartedAt;
+  }
+
+  // Emit room update
+  if (ioInstance) {
+    ioInstance.to(room.id).emit('game_update', room);
+  }
 }
 
 startServer();

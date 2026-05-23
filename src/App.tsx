@@ -49,6 +49,11 @@ export default function App() {
     socket.on('error_msg', (msg) => {
       alert(msg);
     });
+    socket.on('kicked', () => {
+      localStorage.removeItem('shelem_last_room');
+      setRoom(null);
+      alert('You have been kicked from the room by the host.');
+    });
 
     return () => {
       socket.off('room_created');
@@ -58,6 +63,7 @@ export default function App() {
       socket.off('game_update');
       socket.off('error');
       socket.off('error_msg');
+      socket.off('kicked');
     };
   }, []);
 

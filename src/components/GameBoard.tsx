@@ -12,6 +12,7 @@ interface GameBoardProps {
 }
 
 const AVATAR_COLORS: { [key: string]: string } = {
+  '👤': 'bg-slate-600',
   '🧔': 'bg-blue-500',
   '👨': 'bg-emerald-500',
   '👩': 'bg-rose-500',
@@ -72,6 +73,37 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   const [showHistory, setShowHistory] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'error' | 'info' | 'success' } | null>(null);
   const [hidePlayerIds, setHidePlayerIds] = useState(() => localStorage.getItem('shelem_hide_player_ids') === 'true');
+  const [revealAllHands, setRevealAllHands] = useState(() => localStorage.getItem('shelem_reveal_all_hands') === 'true');
+  const [turnNotificationEnabled, setTurnNotificationEnabled] = useState(() => localStorage.getItem('shelem_turn_notification') === 'true');
+  const [showSpectatorView, setShowSpectatorView] = useState(() => localStorage.getItem('shelem_show_spectator_view') !== 'false');
+
+  useEffect(() => {
+    localStorage.setItem('shelem_turn_notification', String(turnNotificationEnabled));
+  }, [turnNotificationEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('shelem_show_spectator_view', String(showSpectatorView));
+  }, [showSpectatorView]);
+
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!room.turnStartedAt || !room.turnDuration) {
+      setTimeLeft(null);
+      return;
+    }
+
+    const updateTimer = () => {
+      const elapsed = Date.now() - room.turnStartedAt;
+      const remaining = Math.max(0, Math.ceil((room.turnDuration - elapsed) / 1000));
+      setTimeLeft(remaining);
+    };
+
+    updateTimer();
+    const interval = setInterval(updateTimer, 200);
+
+    return () => clearInterval(interval);
+  }, [room.turnStartedAt, room.turnDuration, room.currentTurn]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -138,6 +170,10 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   }, [hidePlayerIds]);
 
   useEffect(() => {
+    localStorage.setItem('shelem_reveal_all_hands', String(revealAllHands));
+  }, [revealAllHands]);
+
+  useEffect(() => {
     setIsActionLoading(false);
   }, [room.phase, room.currentTurn, room.currentTrick.length]);
 
@@ -196,6 +232,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
   const is2P = room.mode === '2_PLAYER';
   const isSpectator = !room.players.some((p: any) => p.name === playerName);
+  const isHost = !isSpectator && room.players[0]?.name === playerName;
 
   // Normalize positions
   let myIndex = room.players.findIndex((p: any) => p.name === playerName);
@@ -282,6 +319,10 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   const sendReaction = (reaction: string) => {
     socket.emit('send_reaction', { roomId: room.id, reaction });
     playSound('turn');
+  };
+
+  const handleKickUser = (targetUserId: string) => {
+    socket.emit('kick_user', { roomId: room.id, targetUserId });
   };
 
   const getRankValue = (rank: string): number => {
@@ -385,8 +426,8 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
   const possiblePlays = showPossiblePlays ? getPossiblePlays() : [];
 
   // Sound effects
-  const playSound = (type: 'play' | 'win' | 'turn' | 'click') => {
-    if (!soundEnabled) return;
+  const playSound = (type: 'play' | 'win' | 'turn' | 'click' | 'notification') => {
+    if (type === 'notification' ? !turnNotificationEnabled : !soundEnabled) return;
     try {
         const context = new (window.AudioContext || (window as any).webkitAudioContext)();
         if (context.state === 'suspended') {
@@ -413,6 +454,25 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
             gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.05);
             oscillator.start();
             oscillator.stop(context.currentTime + 0.05);
+        } else if (type === 'notification') {
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(587.33, context.currentTime); // D5
+            gainNode.gain.setValueAtTime(0.08, context.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.005, context.currentTime + 0.15);
+            oscillator.start();
+            oscillator.stop(context.currentTime + 0.15);
+
+            // Second tone slightly offset for beautiful ding-ding double chime
+            const osc2 = context.createOscillator();
+            const gain2 = context.createGain();
+            osc2.connect(gain2);
+            gain2.connect(context.destination);
+            osc2.type = 'sine';
+            osc2.frequency.setValueAtTime(880, context.currentTime + 0.12); // A5
+            gain2.gain.setValueAtTime(0.08, context.currentTime + 0.12);
+            gain2.gain.exponentialRampToValueAtTime(0.005, context.currentTime + 0.3);
+            osc2.start(context.currentTime + 0.12);
+            osc2.stop(context.currentTime + 0.3);
         } else if (type === 'win') {
             oscillator.type = 'square';
             oscillator.frequency.setValueAtTime(523.25, context.currentTime);
@@ -436,6 +496,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
   useEffect(() => {
     if (isMyTurn && room.phase === 'PLAYING') {
+        playSound('notification');
         playSound('turn');
     }
   }, [room.currentTurn, room.phase, isMyTurn]);
@@ -567,6 +628,15 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
           )}
           {tableFinish === 'carbon' && (
             <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/carbon-fibre.png")' }} />
+          )}
+          {tableFinish === 'linen' && (
+            <div className="absolute inset-0 opacity-[0.12] pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/ashen-linen.png")' }} />
+          )}
+          {tableFinish === 'steel' && (
+            <div className="absolute inset-0 opacity-[0.08] pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/brushed-alum.png")' }} />
+          )}
+          {tableFinish === 'velvet' && (
+            <div className="absolute inset-0 opacity-[0.14] pointer-events-none" style={{ backgroundImage: 'url("https://www.transparenttextures.com/patterns/padded-cells.png")' }} />
           )}
           
           {/* Decorative Felt Circle */}
@@ -861,9 +931,14 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
                   <div className={`
                     w-16 h-16 rounded-full border-4 flex items-center justify-center text-2xl transition-all duration-500 relative z-10 overflow-hidden
-                    ${isTurn ? 'border-yellow-500 scale-110 shadow-[0_0_30px_rgba(234,179,8,0.6)]' : 'border-white/20'}
+                    \${isTurn ? 'border-yellow-500 scale-110 shadow-[0_0_30px_rgba(234,179,8,0.6)]' : 'border-white/20'}
                   `}>
-                    <PlayerAvatar avatar={player.avatar || '🧔'} />
+                    <PlayerAvatar avatar={player.avatar || '👤'} />
+                    {isTurn && timeLeft !== null && (
+                      <div className="absolute inset-0 bg-black/75 flex items-center justify-center font-mono font-black text-yellow-400 text-lg z-30 select-none animate-pulse rounded-full border border-yellow-400/55">
+                        {timeLeft}
+                      </div>
+                    )}
                     {isTurn && (
                         <div className="absolute inset-0 rounded-full border-[6px] border-yellow-400/30 animate-ping pointer-events-none" />
                     )}
@@ -876,8 +951,9 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                 </div>
             <div className="flex flex-col items-center">
               <div className="flex items-center gap-2">
-                <p className={`font-bold text-sm ${isTurn ? 'text-yellow-400' : 'text-white'}`}>
-                  {player.name} {(!isSpectator && player.id === room.players[myIndex]?.id) ? '(YOU)' : ''}
+                <p className={`font-bold text-sm flex items-center gap-1 ${isTurn ? 'text-yellow-400' : 'text-white'}`}>
+                  <span>{player.name} {(!isSpectator && player.id === room.players[myIndex]?.id) ? '(YOU)' : ''}</span>
+                  {player.isVerified && <VerifiedBadge size={12} />}
                 </p>
                 {!hidePlayerIds && (
                   <span className="text-[8px] font-mono text-white/30 bg-black/30 px-1 rounded">#{player.id.slice(0, 4)}</span>
@@ -896,32 +972,86 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
           {/* My Hand at Bottom */}
           <div className="absolute bottom-[-10px] md:bottom-[-20px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-full max-w-7xl mx-auto overflow-hidden">
-            {isSpectator && room.phase !== 'LOBBY' && (
-                <div className="flex justify-center mb-1">
-                    <span className="text-[10px] font-black text-yellow-500 bg-black/60 px-4 py-1.5 rounded-full border border-yellow-500/30 backdrop-blur-md uppercase tracking-[0.2em] shadow-xl">
-                        Watching {room.players[myIndex]?.name}'s Hand
-                    </span>
+            {isSpectator && revealAllHands && room.phase !== 'LOBBY' ? (
+                <div className="flex flex-col items-center mb-10 scale-95 md:scale-100 origin-bottom">
+                    <div className="bg-black/90 backdrop-blur-md border border-yellow-500/30 rounded-3xl p-4 shadow-2xl max-w-2xl w-full max-h-[180px] overflow-y-auto custom-scrollbar">
+                        <div className="flex justify-between items-center mb-3 pb-2 border-b border-white/5">
+                            <span className="text-[10px] font-black text-yellow-500 uppercase tracking-widest flex items-center gap-2">
+                                <Eye size={12} className="animate-pulse text-yellow-500" />
+                                Spectator X-Ray (All Player Hands)
+                            </span>
+                            <span className="text-[7px] bg-yellow-500/15 text-yellow-400 px-2 py-0.5 rounded border border-yellow-500/20 font-black">CASTING INTELLIGENCE MAP</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            {room.players.map((p: any, pIdx: number) => (
+                                <div 
+                                    key={p.id} 
+                                    onClick={() => setSpectatorPerspective(pIdx)}
+                                    className={`
+                                        bg-white/5 hover:bg-white/10 border rounded-2xl p-2.5 flex flex-col gap-1.5 min-w-0 transition-all cursor-pointer
+                                        ${spectatorPerspective === pIdx ? 'border-yellow-500/30 bg-yellow-500/5' : 'border-white/5'}
+                                    `}
+                                >
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-[10px] font-black text-white truncate max-w-[120px]">
+                                            {p.name} {spectatorPerspective === pIdx ? '👁️' : ''}
+                                        </span>
+                                        <span className="text-[8px] font-mono text-white/30">{p.cards.length} Cards</span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 leading-none">
+                                        {p.cards && p.cards.length > 0 ? (
+                                            p.cards.map((c: any, cIdx: number) => (
+                                                <div 
+                                                    key={cIdx} 
+                                                    className={`
+                                                        px-1.5 py-0.5 rounded text-[8px] font-black border flex items-center gap-0.5 select-none
+                                                        ${c.suit === 'SPADES' || c.suit === 'CLUBS' ? 'bg-zinc-950 border-zinc-800 text-zinc-300' : 'bg-red-950/40 border-red-900/40 text-red-300'}
+                                                        ${room.hokm === c.suit ? 'ring-1 ring-yellow-500 text-yellow-500 font-extrabold' : ''}
+                                                    `}
+                                                >
+                                                    <span className="text-[9px] leading-none">{c.rank}</span>
+                                                    <SuitIcon suit={c.suit} size={7} />
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <span className="text-[7px] text-white/25 italic">No cards left</span>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
                 </div>
+            ) : (
+                <>
+                    {isSpectator && room.phase !== 'LOBBY' && (
+                        <div className="flex justify-center mb-1">
+                            <span className="text-[10px] font-black text-yellow-500 bg-black/60 px-4 py-1.5 rounded-full border border-yellow-500/30 backdrop-blur-md uppercase tracking-[0.2em] shadow-xl">
+                                Watching {room.players[myIndex]?.name}'s Hand
+                            </span>
+                        </div>
+                    )}
+                    <div className={`flex justify-center -space-x-6 md:-space-x-10 lg:-space-x-6 px-4 pb-12 transition-all duration-300 scale-[0.7] sm:scale-[0.8] md:scale-90 lg:scale-100 origin-bottom`}>
+                        {room.players[myIndex]?.cards.map((c: CardData, i: number) => (
+                          <Card 
+                            key={`${c.suit}-${c.rank}`} 
+                            card={c} 
+                            size={cardSize}
+                            onClick={() => {
+                                if (!isSpectator) {
+                                    playSound('play');
+                                    handleAction(c);
+                                }
+                            }}
+                            selected={selectedCards.some(sc => sc.suit === c.suit && sc.rank === c.rank)}
+                            highlighted={possiblePlays.some((p: any) => p.suit === c.suit && p.rank === c.rank)}
+                            layoutId={`card-${c.suit}-${c.rank}`}
+                            disabled={isSpectator || (!isMyTurn && room.phase === 'PLAYING') || (room.phase === 'PLAYING' && is2P && room.subPhase === 'PILE') || (room.phase === 'DISCARDING' && !isMyTurn)}
+                          />
+                        ))}
+                    </div>
+                </>
             )}
-            <div className={`flex justify-center -space-x-6 md:-space-x-10 lg:-space-x-6 px-4 pb-12 transition-all duration-300 scale-[0.7] sm:scale-[0.8] md:scale-90 lg:scale-100 origin-bottom`}>
-                {room.players[myIndex]?.cards.map((c: CardData, i: number) => (
-                  <Card 
-                    key={`${c.suit}-${c.rank}`} 
-                    card={c} 
-                    size={cardSize}
-                    onClick={() => {
-                        if (!isSpectator) {
-                            playSound('play');
-                            handleAction(c);
-                        }
-                    }}
-                    selected={selectedCards.some(sc => sc.suit === c.suit && sc.rank === c.rank)}
-                    highlighted={possiblePlays.some((p: any) => p.suit === c.suit && p.rank === c.rank)}
-                    layoutId={`card-${c.suit}-${c.rank}`}
-                    disabled={isSpectator || (!isMyTurn && room.phase === 'PLAYING') || (room.phase === 'PLAYING' && is2P && room.subPhase === 'PILE') || (room.phase === 'DISCARDING' && !isMyTurn)}
-                  />
-                ))}
-            </div>
           </div>
         </div>
 
@@ -931,31 +1061,54 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
           w-full lg:w-72 flex flex-col gap-4 animate-in slide-in-from-right duration-300
         `}>
           {showStats && (
-            <>
-              <div className="lg:hidden flex justify-between items-center mb-4">
-                <h2 className="text-lg font-black uppercase text-emerald-400">Match Details</h2>
-                <button onClick={() => setShowStats(false)} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-colors">
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="p-2.5 bg-yellow-400/10 border border-yellow-400/20 rounded-2xl">
-                 <p className="text-[10px] font-black text-yellow-400 uppercase tracking-widest text-center">Spectator Mode</p>
-                 <div className="flex flex-col gap-2 mt-3">
-                    <p className="text-[8px] font-black text-white/30 uppercase tracking-tighter ml-1">Follow Perspective:</p>
-                    <div className="grid grid-cols-2 gap-1.5">
-                        {room.players.map((p: any, idx: number) => (
-                            <button
-                                key={p.id}
-                                onClick={() => setSpectatorPerspective(idx)}
-                                className={`py-1.5 px-2 rounded-xl text-[8px] font-black uppercase transition-all truncate border ${spectatorPerspective === idx ? 'bg-emerald-500 text-black border-emerald-500' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'}`}
-                            >
-                                {p.name}
-                            </button>
-                        ))}
-                    </div>
+            <div className="lg:hidden flex justify-between items-center mb-2">
+              <h2 className="text-sm font-black uppercase text-emerald-400">Match Details</h2>
+              <button onClick={() => setShowStats(false)} className="p-2 bg-white/5 rounded-full hover:bg-white/10 transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+          )}
+
+          {isSpectator && (
+            <div className="p-4 bg-yellow-400/5 border border-yellow-400/20 rounded-[2rem] space-y-3.5 shadow-lg relative overflow-hidden">
+               <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-400/5 rounded-full blur-2xl pointer-events-none" />
+               <div className="flex justify-between items-center relative z-10">
+                 <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest flex items-center gap-1">
+                   <Eye size={12} className="text-yellow-500" />
+                   Spectator Control Desk
+                 </p>
+                 <span className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
+               </div>
+
+               {/* Reveal all cards toggle */}
+               <div className="flex justify-between items-center p-2 rounded-xl bg-black/40 border border-white/5 relative z-10">
+                 <div className="flex flex-col">
+                   <span className="text-[8px] font-black uppercase text-white/80">Reveal All Hands</span>
+                   <span className="text-[6px] font-semibold text-white/30 uppercase tracking-tighter leading-none">Global X-Ray Mode</span>
                  </div>
-              </div>
-            </>
+                 <button
+                   onClick={() => setRevealAllHands(!revealAllHands)}
+                   className={`px-3 py-1 rounded-lg text-[8px] font-black uppercase transition-all ${revealAllHands ? 'bg-yellow-500 text-black shadow-md' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                 >
+                   {revealAllHands ? 'Active' : 'Muted'}
+                 </button>
+               </div>
+
+               <div className="flex flex-col gap-1.5 relative z-10">
+                  <p className="text-[8px] font-black text-white/30 uppercase tracking-widest ml-1">Focus Camera Perspective:</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                      {room.players.map((p: any, idx: number) => (
+                          <button
+                              key={p.id}
+                              onClick={() => setSpectatorPerspective(idx)}
+                              className={`py-1.5 px-2 rounded-xl text-[8px] font-black uppercase transition-all truncate border ${spectatorPerspective === idx ? 'bg-emerald-500 text-black border-emerald-500 shadow-md font-extrabold' : 'bg-white/5 text-white/60 border-white/10 hover:bg-white/10'}`}
+                          >
+                              {p.name}
+                          </button>
+                      ))}
+                  </div>
+               </div>
+            </div>
           )}
 
           {isSpectator && showHistory && (
@@ -1128,8 +1281,8 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                       <div key={p.id} className={`bg-white/5 rounded-2xl p-3 border transition-all ${isTurn ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-white/5 hover:bg-white/10'}`}>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-full overflow-hidden border ${isTurn ? 'border-emerald-500' : 'border-white/10'}`}>
-                                    <PlayerAvatar avatar={p.avatar || '🧔'} />
+                                <div className={`w-8 h-8 rounded-full overflow-hidden border \${isTurn ? 'border-emerald-500' : 'border-white/10'}`}>
+                                    <PlayerAvatar avatar={p.avatar || '👤'} />
                                 </div>
                                 <div>
                                     <p className={`text-[10px] font-bold leading-none mb-1 ${isTurn ? 'text-emerald-400' : 'text-white'}`}>{p.name}</p>
@@ -1145,6 +1298,40 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                     );
                   })}
                 </div>
+
+                {/* Spectators List */}
+                {showSpectatorView && (
+                  <div className="space-y-2 p-3 bg-black/30 rounded-2xl border border-white/5 animate-in fade-in duration-300">
+                    <div className="flex justify-between items-center px-1">
+                      <p className="text-[10px] font-black uppercase text-white/20 tracking-widest italic">Spectating Crew ({room.spectators?.length || 0})</p>
+                      <Eye size={12} className="text-white/25 shrink-0" />
+                    </div>
+                    {room.spectators && room.spectators.length > 0 ? (
+                      <div className="flex flex-col gap-1.5 max-h-[140px] overflow-y-auto custom-scrollbar">
+                        {room.spectators.map((s: any) => (
+                          <div key={s.id} className="flex justify-between items-center bg-white/5 px-2.5 py-1.5 rounded-xl border border-white/5 gap-2">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-xs">👁️</span>
+                              <span className="text-[10px] font-bold text-white truncate max-w-[120px]">{s.name}</span>
+                              {s.isVerified && <VerifiedBadge size={10} />}
+                            </div>
+                            {isHost && (
+                              <button
+                                onClick={() => handleKickUser(s.id)}
+                                className="text-[8px] font-black bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-black px-2 py-0.5 rounded transition-all uppercase tracking-tighter"
+                                title="Kick Spectator"
+                              >
+                                Kick
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[9px] text-white/20 italic text-center py-2 uppercase font-black tracking-wider">No Active Spectators</p>
+                    )}
+                  </div>
+                )}
 
                 {/* Round Info Header */}
                 {room.hokm && (
@@ -1310,25 +1497,31 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
             <Modal title="Deep Shelem Chronicle" onClose={() => setShowNews(false)} density="COMPACT">
                 <div className="space-y-6 max-h-[70vh] overflow-y-auto custom-scrollbar pr-1">
                     {/* Latest Release */}
-                    <div className="space-y-3 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-3xl relative overflow-hidden group">
-                        <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:scale-150 transition-transform duration-700" />
+                    <div className="space-y-4 p-5 bg-gradient-to-br from-emerald-500/15 to-emerald-900/10 border border-emerald-500/25 rounded-3xl relative overflow-hidden group">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700 pointer-events-none" />
                         <div className="flex items-center justify-between relative z-10">
-                            <span className="bg-emerald-500 text-black text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest leading-none shadow-md">v1.4.0 Stable</span>
+                            <span className="bg-emerald-500 text-black text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest leading-none shadow-md">v1.5.0 Stable</span>
                             <span className="text-[10px] font-bold text-emerald-400">LATEST RELEASE</span>
                         </div>
-                        <h3 className="text-white font-black text-base relative z-10 uppercase tracking-wide">Client Guardians & Spectators</h3>
-                        <div className="space-y-3 text-xs text-white/75 leading-relaxed relative z-10">
+                        <h3 className="text-white font-black text-base relative z-10 uppercase tracking-wide">Sound Turn Alert & Verifications</h3>
+                        <div className="space-y-3.5 text-xs text-white/75 leading-relaxed relative z-10">
+                            <p className="text-[10px] text-white/40 leading-normal -mt-1 font-medium">An elegant selection of audio chimes, authentication verifications, display settings, and luxurious textures are ready for your next table session!</p>
+                            
                             <div className="flex gap-3">
-                                <div className="p-1 rounded bg-rose-500/20 text-rose-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0">BUG FIX</div>
-                                <p><span className="text-white font-bold">Active Shield for Follow-Suit:</span> Select cards freely again after choosing an invalid card. Re-selection is instantly unlocked with a friendly banner reminder, preventing any turn lockups.</p>
+                                <div className="p-1 rounded bg-emerald-500/20 text-emerald-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0 select-none">NEW</div>
+                                <p><span className="text-white font-bold">Resonant Turn Chimes:</span> Wake up your attention with a custom dual-frequency chime sound whenever active turn switches to you. Completely configurable in display toggles.</p>
                             </div>
                             <div className="flex gap-3">
-                                <div className="p-1 rounded bg-emerald-500/20 text-emerald-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0">NEW</div>
-                                <p><span className="text-white font-bold">Live Spectator Badge:</span> Real-time viewer count is now broadcast right next to the Room Code in the workspace header!</p>
+                                <div className="p-1 rounded bg-teal-500/20 text-teal-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0 select-none">NEW</div>
+                                <p><span className="text-white font-bold">Verified Account Promo:</span> Secure your official verified checkmark badges from Hall of Fame menu by entering the exclusive verification passcode phrase.</p>
                             </div>
                             <div className="flex gap-3">
-                                <div className="p-1 rounded bg-teal-500/20 text-teal-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0">NEW</div>
-                                <p><span className="text-white font-bold">Privacy Toggle:</span> Added a new option to settings allowing players to hide or reveal Player hash IDs on the board layout.</p>
+                                <div className="p-1 rounded bg-purple-500/20 text-purple-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0 select-none">NEW</div>
+                                <p><span className="text-white font-bold">Custom Display Toggles:</span> Clean up clutter! Option added to quickly show or hide the active spectators list next to table deck.</p>
+                            </div>
+                            <div className="flex gap-3">
+                                <div className="p-1 rounded bg-amber-500/20 text-amber-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0 select-none">NEW</div>
+                                <p><span className="text-white font-bold">Luxurious Finishes:</span> Add elite flair with three new table surface selections: <span className="text-amber-400">Classic Linen</span>, <span className="text-amber-400">Brushed Steel</span>, and <span className="text-amber-400">Padded Velvet</span>.</p>
                             </div>
                         </div>
                     </div>
@@ -1336,22 +1529,18 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                     {/* Previous Release */}
                     <div className="space-y-3 p-4 bg-white/5 border border-white/5 rounded-3xl relative overflow-hidden">
                         <div className="flex items-center justify-between">
-                            <span className="bg-white/10 text-white/60 text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest leading-none">v1.3.2</span>
+                            <span className="bg-white/10 text-white/60 text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest leading-none">v1.4.0</span>
                             <span className="text-[10px] font-bold text-white/30">PREVIOUS RELEASE</span>
                         </div>
-                        <h3 className="text-white/80 font-black text-sm uppercase tracking-wide">Spectator Lens & Scaling</h3>
+                        <h3 className="text-white/80 font-black text-sm uppercase tracking-wide">Client Guardians & Spectators</h3>
                         <div className="space-y-2 text-xs text-white/50 leading-relaxed">
                             <div className="flex gap-3">
                                 <div className="w-1.5 h-1.5 rounded-full bg-white/30 mt-1.5 shrink-0" />
-                                <p><span className="text-white/70 font-bold">Spectator Cameras:</span> Choose any active player's perspective from the sidebar control panel.</p>
+                                <p><span className="text-white/70 font-bold">Active Shield for Follow-Suit:</span> Choose keys cleanly and prevent lockups with follow-suit validation prompts.</p>
                             </div>
                             <div className="flex gap-3">
                                 <div className="w-1.5 h-1.5 rounded-full bg-white/30 mt-1.5 shrink-0" />
-                                <p><span className="text-white/70 font-bold">Trick Log History:</span> Real-time scoreboard log showing exact plays of the previous 5 tricks.</p>
-                            </div>
-                            <div className="flex gap-3">
-                                <div className="w-1.5 h-1.5 rounded-full bg-white/30 mt-1.5 shrink-0" />
-                                <p><span className="text-white/70 font-bold">Responsive Card Scaling:</span> Configure card dimensions (Small, Medium, Large) directly from settings.</p>
+                                <p><span className="text-white/70 font-bold">Live Spectator badges:</span> Display real-time viewer count broadcast in game board room header.</p>
                             </div>
                         </div>
                     </div>
@@ -1361,7 +1550,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                         <span className="text-xl">🚀</span>
                         <div>
                             <p className="text-[9px] font-black text-yellow-500 uppercase tracking-widest leading-none mb-1">Coming Next</p>
-                            <p className="text-[11px] text-white/40 leading-normal font-medium leading-tight">Ranked multiplayer leagues, custom profile cards, and team voice communication are coming up!</p>
+                            <p className="text-[11px] text-white/40 leading-normal font-medium leading-tight">Ranked multiplayer leagues, interactive card hover effects, and voice channels are cooking in our lab!</p>
                         </div>
                     </div>
 
@@ -1451,7 +1640,10 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                                     { id: 'leather', name: 'Leather' },
                                     { id: 'wood', name: 'Wood' },
                                     { id: 'granite', name: 'Granite' },
-                                    { id: 'carbon', name: 'Carbon' }
+                                    { id: 'carbon', name: 'Carbon' },
+                                   { id: 'linen', name: 'Linen' },
+                                   { id: 'steel', name: 'Steel' },
+                                   { id: 'velvet', name: 'Velvet' }
                                 ].map(finish => (
                                     <button 
                                         key={finish.id}
@@ -1501,13 +1693,51 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                           <div className="h-px bg-white/5 my-2" />
                           <label className="block text-[10px] font-black uppercase text-white/40 mb-1 italics tracking-widest">Toggles</label>
                           <Toggle label="Sound" value={soundEnabled} onChange={setSoundEnabled} icon={<Volume2 size={12} />} />
+                          <Toggle label="Turn Sound Alerts" value={turnNotificationEnabled} onChange={setTurnNotificationEnabled} icon={<Volume2 size={12} />} />
                           <Toggle label="Hints" value={showPossiblePlays} onChange={setShowPossiblePlays} icon={<Eye size={12} />} />
                           <Toggle label="Chat" value={showChat} onChange={setShowChat} icon={<span className="text-[10px]">💬</span>} />
                           <Toggle label="Hide Player IDs" value={hidePlayerIds} onChange={setHidePlayerIds} icon={<span className="text-xs font-mono">#</span>} />
+                          <Toggle label="Show Spectators list" value={showSpectatorView} onChange={setShowSpectatorView} icon={<Users size={12} />} />
                       </div>
                     </div>
 
                     <div className="space-y-4">
+                      {isHost && (
+                         <div className="p-4 bg-rose-500/5 border border-rose-500/20 rounded-2xl space-y-3">
+                            <div className="flex justify-between items-center pb-1.5 border-b border-white/5">
+                               <p className="text-[10px] font-black uppercase text-rose-400 tracking-widest italic">Host Roster Moderator</p>
+                               <span className="text-[7px] font-bold bg-rose-400/20 text-rose-300 px-1.5 py-0.5 rounded">Owner authorized</span>
+                            </div>
+                            <div className="space-y-2">
+                               <p className="text-[8px] font-black uppercase text-white/40 tracking-widest leading-none mb-1">Active Players</p>
+                               <div className="space-y-1.5 max-h-[120px] overflow-y-auto custom-scrollbar">
+                                  {room.players.map((p: any, idx: number) => {
+                                     const isSelf = p.name === playerName;
+                                     return (
+                                        <div key={p.id} className="flex justify-between items-center bg-black/40 p-2 rounded-xl border border-white/5 gap-2">
+                                           <div className="flex items-center gap-1.5 min-w-0">
+                                              <span className="text-xs">{p.avatar || '👤'}</span>
+                                              <p className="text-[10.5px] font-bold text-white truncate max-w-[110px] flex items-center gap-1">
+                                                 <span>{p.name} {isSelf ? '(YOU)' : ''}</span>
+                                                 {p.isVerified && <VerifiedBadge size={10} />}
+                                              </p>
+                                           </div>
+                                           {!isSelf && (
+                                              <button
+                                                 onClick={() => handleKickUser(p.id)}
+                                                 className="text-[8px] font-black bg-rose-500 hover:bg-rose-400 text-black px-2 py-0.5 rounded transition-all uppercase tracking-tighter"
+                                              >
+                                                 Kick
+                                              </button>
+                                           )}
+                                        </div>
+                                     );
+                                  })}
+                               </div>
+                            </div>
+                         </div>
+                      )}
+
                       <div className="bg-black/30 p-4 rounded-2xl border border-white/5">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-[8px] font-black text-white/30 uppercase">Build Info</span>
@@ -1701,7 +1931,7 @@ function BiddingOverlay({ room, isMyTurn, onBid, isLoading }: any) {
                                 <div key={p.id} className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isCurrent ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'bg-black/20 border-white/5 text-white/40'}`}>
                                     <div className="flex items-center gap-2">
                                         <div className="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center bg-black/40 text-[10px]">
-                                            <PlayerAvatar avatar={p.avatar || '🧔'} />
+                                            <PlayerAvatar avatar={p.avatar || '👤'} />
                                         </div>
                                         <span className={`text-[10px] font-black uppercase tracking-widest truncate max-w-[80px]`}>{p.name}</span>
                                     </div>
@@ -1849,4 +2079,25 @@ function Heart({ size, className }: any) {
 }
 function Diamond({ size, className }: any) {
     return <svg width={size} height={size} viewBox="0 0 24 24" className={className}><path d="M12 2L3 12l9 10 9-10-9-10z"/></svg>;
+}
+
+function VerifiedBadge({ size = 12 }: { size?: number }) {
+  return (
+    <svg 
+      className="inline-block shrink-0 ml-1 select-none" 
+      width={size} 
+      height={size} 
+      viewBox="0 0 24 24"
+      fill="none"
+    >
+      <path 
+        d="M22.5 12.5c0-1.58-.875-2.95-2.148-3.6.154-.435.238-.905.238-1.4 0-2.21-1.71-3.99-3.818-3.99-.47 0-.915.085-1.328.235C14.79 2.5 13.518 1.5 12 1.5c-1.517 0-2.79 1-3.442 2.245-.413-.15-.858-.235-1.328-.235C5.12 3.51 3.41 5.29 3.41 7.5c0 .495.084.965.238 1.4C2.375 9.55 1.5 10.92 1.5 12.5c0 1.58.875 2.95 2.148 3.6-.154.435-.238.905-.238 1.4 0 2.21 1.71 3.99 3.818 3.99.47 0 .915-.085 1.328-.235C9.21 22.5 10.482 23.5 12 23.5c1.517 0 2.79-1 3.442-2.245.413.15.858.235 1.328.235 2.108 0 3.818-1.78 3.818-3.99 0-.495-.084-.965-.238-1.4 1.273-.65 2.148-2.02 2.148-3.6z" 
+        fill="#3b82f6" 
+      />
+      <path 
+        d="M9.707 14.293L7.414 12a1 1 0 00-1.414 1.414l3 3a1 1 0 001.414 0l7-7a1 1 0 00-1.414-1.414l-6.293 6.293z" 
+        fill="white" 
+      />
+    </svg>
+  );
 }
