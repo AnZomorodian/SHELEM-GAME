@@ -60,7 +60,30 @@ export default function Card({ card, onClick, selected, disabled, size = 'medium
       classic: 'bg-blue-900 border-blue-800',
       modern: 'bg-zinc-900 border-zinc-800',
       royal: 'bg-yellow-900 border-yellow-800',
+      emerald: 'bg-emerald-950 border-emerald-800',
+      obsidian: 'bg-stone-950 border-amber-600/30 ring-1 ring-amber-500/10',
+      crimson: 'bg-red-950 border-red-900',
     };
+
+    let centerBorderColor = 'border-white/20';
+    let innerLineColor = 'bg-white/10';
+    let centerCoreBg = 'bg-white/5';
+    if (backStyle === 'obsidian') {
+      centerBorderColor = 'border-amber-400/40';
+      innerLineColor = 'bg-amber-400/20';
+      centerCoreBg = 'bg-amber-950/20';
+    } else if (backStyle === 'emerald') {
+      centerBorderColor = 'border-emerald-400/40';
+      innerLineColor = 'bg-emerald-400/20';
+      centerCoreBg = 'bg-emerald-950/20';
+    } else if (backStyle === 'crimson') {
+      centerBorderColor = 'border-rose-400/40';
+      innerLineColor = 'bg-rose-400/20';
+      centerCoreBg = 'bg-rose-950/20';
+    } else if (backStyle === 'royal') {
+      centerBorderColor = 'border-yellow-400/40';
+      innerLineColor = 'bg-yellow-400/20';
+    }
 
     const hiddenSizeClasses = {
         small: 'w-10 h-16',
@@ -72,13 +95,13 @@ export default function Card({ card, onClick, selected, disabled, size = 'medium
       <div className={`${hiddenSizeClasses[effectiveSize]} ${backColors[backStyle] || backColors.classic} border-2 rounded-xl flex items-center justify-center shadow-md overflow-hidden relative`}>
         <div className="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent" />
         <div className="w-full h-full border border-white/10 rounded-inner p-1.5">
-          <div className="w-full h-full bg-white/5 rounded-lg flex items-center justify-center border border-white/5">
+          <div className={`w-full h-full ${centerCoreBg} rounded-lg flex items-center justify-center border border-white/5`}>
              <div className="relative">
-                <div className={`w-6 h-6 border-2 border-white/20 rotate-45 flex items-center justify-center ${effectiveSize === 'large' ? 'scale-150' : ''}`}>
+                <div className={`w-6 h-6 border-2 ${centerBorderColor} rotate-45 flex items-center justify-center ${effectiveSize === 'large' ? 'scale-150' : ''}`}>
                     <div className="w-3 h-3 border border-white/10" />
                 </div>
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-px bg-white/10 -rotate-45" />
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-px bg-white/10 -rotate-45" />
+                <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-px ${innerLineColor} -rotate-45`} />
+                <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-8 w-px ${innerLineColor} -rotate-45`} />
              </div>
           </div>
         </div>
@@ -92,10 +115,15 @@ export default function Card({ card, onClick, selected, disabled, size = 'medium
     <motion.div
       layout
       layoutId={layoutId}
+      style={{ perspective: 1000, transformStyle: "preserve-3d" }}
       whileHover={!disabled ? { 
-        y: -15, 
-        scale: 1.05,
-        transition: { type: "spring", stiffness: 400, damping: 10 }
+        y: -22, 
+        scale: 1.1,
+        rotateY: 12,
+        rotateX: 8,
+        z: 15,
+        boxShadow: "0px 25px 40px rgba(0,0,0,0.6)",
+        transition: { type: "spring", stiffness: 500, damping: 14 }
       } : {}}
       whileTap={!disabled ? { scale: 0.95 } : {}}
       onClick={!disabled ? onClick : undefined}

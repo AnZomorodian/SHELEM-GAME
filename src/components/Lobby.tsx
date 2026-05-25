@@ -42,6 +42,8 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
   const [email, setEmail] = useState('');
   const [profileEmail, setProfileEmail] = useState('');
   const [showProfile, setShowProfile] = useState(false);
+  const [profileTab, setProfileTab] = useState<'profile' | 'leagues'>('profile');
+  const [hoveredLeague, setHoveredLeague] = useState<string | null>(null);
   const [authError, setAuthError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -382,129 +384,269 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
                 <div className="flex justify-between items-start mb-6 shrink-0">
                     <div>
                         <h2 className="text-xl md:text-2xl font-black uppercase tracking-widest text-emerald-500 leading-none mb-1">Player Card</h2>
-                        <p className="text-[8px] md:text-[10px] text-white/20 font-black uppercase tracking-[0.3em]">Season 1 • v1.3.2</p>
+                        <p className="text-[8px] md:text-[10px] text-white/20 font-black uppercase tracking-[0.3em]">Season 1 • v1.4.5</p>
                     </div>
                     <button onClick={() => setShowProfile(false)} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 text-white/40 hover:text-white hover:bg-white/10 transition-all border border-white/10">✕</button>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-6">
-                    <div className="relative p-6 rounded-[2.5rem] bg-gradient-to-br from-emerald-500/20 to-emerald-900/40 border border-emerald-500/20 shadow-2xl overflow-hidden group">
-                        <div className="absolute top-[-20%] right-[-10%] w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all" />
-                        
-                        <div className="flex items-center gap-5 relative z-10">
-                            <div className="w-20 h-20 rounded-[2rem] overflow-hidden border-4 border-emerald-500/30 shadow-xl bg-black/40">
-                                {user.avatar ? (
-                                    <img src={user.avatar} className="w-full h-full object-cover" />
-                                ) : (
-                                    <div className="w-full h-full flex items-center justify-center text-emerald-500 text-3xl font-black">
-                                        {user.username[0].toUpperCase()}
+                {/* Tab buttons */}
+                <div className="flex bg-black/40 p-1.5 rounded-2xl border border-white/5 mb-6 shrink-0 gap-2">
+                    <button 
+                        onClick={() => setProfileTab('profile')}
+                        className={`flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest transition-all ${profileTab === 'profile' ? 'bg-emerald-500 text-black font-black shadow-lg' : 'text-white/40 hover:text-white/80 font-bold'}`}
+                    >
+                        Overview
+                    </button>
+                    <button 
+                        onClick={() => setProfileTab('leagues')}
+                        className={`flex-1 py-2 rounded-xl text-[10px] uppercase tracking-widest transition-all ${profileTab === 'leagues' ? 'bg-emerald-500 text-black font-black shadow-lg' : 'text-white/40 hover:text-white/80 font-bold'}`}
+                    >
+                        🏆 Ranked Leagues
+                    </button>
+                </div>
+
+                {profileTab === 'profile' ? (
+                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-6">
+                        <div className="relative p-6 rounded-[2.5rem] bg-gradient-to-br from-emerald-500/20 to-emerald-900/40 border border-emerald-500/20 shadow-2xl overflow-hidden group">
+                            <div className="absolute top-[-20%] right-[-10%] w-40 h-40 bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all" />
+                            
+                            <div className="flex items-center gap-5 relative z-10">
+                                <div className="w-20 h-20 rounded-[2rem] overflow-hidden border-4 border-emerald-500/30 shadow-xl bg-black/40">
+                                    {user.avatar ? (
+                                        <img src={user.avatar} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-emerald-500 text-3xl font-black">
+                                            {user.username[0].toUpperCase()}
+                                        </div>
+                                    )}
+                                </div>
+                                <div>
+                                    <p className="text-white font-black text-2xl tracking-tighter uppercase leading-tight flex items-center gap-1.5">
+                                        {user.username}
+                                        {user.isVerified && <VerifiedBadge size={20} />}
+                                    </p>
+                                    <div className="flex items-center gap-2 mt-1">
+                                        <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-black/60 border border-white/10 ${rank.color}`}>
+                                            {rank.name}
+                                        </span>
+                                        <span className="text-[9px] font-mono text-white/20">ID: {user.id.slice(0, 8)}</span>
                                     </div>
-                                )}
-                            </div>
-                            <div>
-                                <p className="text-white font-black text-2xl tracking-tighter uppercase leading-tight flex items-center gap-1.5">
-                                    {user.username}
-                                    {user.isVerified && <VerifiedBadge size={20} />}
-                                </p>
-                                <div className="flex items-center gap-2 mt-1">
-                                    <span className={`text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full bg-black/60 border border-white/10 ${rank.color}`}>
-                                        {rank.name}
-                                    </span>
-                                    <span className="text-[9px] font-mono text-white/20">ID: {user.id.slice(0, 8)}</span>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="mt-6 space-y-2 relative z-10">
-                            <div className="flex justify-between text-[9px] font-black text-white/40 uppercase tracking-widest italic">
-                                <span>Progress to Level {levelData.level + 1}</span>
-                                <span>{Math.floor(levelData.progress)}%</span>
-                            </div>
-                            <div className="h-2 bg-black/60 rounded-full overflow-hidden p-[1px] border border-white/5 shadow-inner">
-                                <motion.div 
-                                    initial={{ width: 0 }}
-                                    animate={{ width: `${levelData.progress}%` }}
-                                    className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.5)]"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                        <StatsCard icon={<Club size={16} />} label="Wins" value={user.stats?.wins || 0} color="emerald" />
-                        <StatsCard icon={<Diamond size={16} />} label="Win Rate" value={`${user.stats?.games > 0 ? ((user.stats.wins / user.stats.games) * 100).toFixed(0) : 0}%`} color="yellow" />
-                        <StatsCard icon={<Spade size={16} />} label="Total Games" value={user.stats?.games || 0} color="blue" />
-                        <StatsCard icon={<Heart size={16} />} label="Peak Bid" value={user.stats?.highestScore || '---'} color="rose" />
-                    </div>
-
-                    <div className="bg-black/60 rounded-[2rem] border border-white/10 p-6 space-y-4 shadow-xl">
-                        <label className="block text-[10px] font-black uppercase text-white/20 tracking-widest italic ml-1">Account Security</label>
-                        <div className="space-y-4">
-                            <div className="flex flex-col gap-2">
-                                <label className="text-[9px] font-black uppercase text-white/40 ml-1">Verified Email:</label>
-                                <div className="flex gap-2">
-                                    <input 
-                                        value={profileEmail}
-                                        onChange={(e) => setProfileEmail(e.target.value)}
-                                        placeholder="Enter your email"
-                                        className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-emerald-500 outline-none transition-all flex-1 font-bold shadow-inner"
+                            <div className="mt-6 space-y-2 relative z-10">
+                                <div className="flex justify-between text-[9px] font-black text-white/40 uppercase tracking-widest italic">
+                                    <span>Progress to Level {levelData.level + 1}</span>
+                                    <span>{Math.floor(levelData.progress)}%</span>
+                                </div>
+                                <div className="h-2 bg-black/60 rounded-full overflow-hidden p-[1px] border border-white/5 shadow-inner">
+                                    <motion.div 
+                                        initial={{ width: 0 }}
+                                        animate={{ width: `${levelData.progress}%` }}
+                                        className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.5)]"
                                     />
-                                    <button 
-                                        type="button"
-                                        onClick={updateProfile}
-                                        disabled={isUpdatingProfile}
-                                        className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black text-[10px] font-black px-6 rounded-xl transition-all uppercase tracking-widest shadow-lg active:scale-95"
-                                    >
-                                        {isUpdatingProfile ? '...' : 'Sync'}
-                                    </button>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div className="bg-black/60 rounded-[2rem] border border-white/10 p-6 space-y-4 shadow-xl">
-                        <label className="block text-[10px] font-black uppercase text-white/20 tracking-widest italic ml-1 flex items-center gap-1.5">
-                            <span className="text-yellow-400">★</span> VERIFY ACCOUNT STATUS
-                        </label>
-                        <div className="space-y-4">
-                            {user.isVerified ? (
-                                <div className="p-4 bg-emerald-500/10 border border-emerald-500/10 rounded-2xl flex items-center gap-3">
-                                    <VerifiedBadge size={28} />
-                                    <div>
-                                        <p className="text-[11px] font-black uppercase tracking-wider text-emerald-400">Verified Player Status Active</p>
-                                        <p className="text-[8px] uppercase tracking-wider text-white/40 leading-normal mt-0.5">Your official checkmark has been fully applied. Your title is highlighted across all live sessions.</p>
-                                    </div>
-                                </div>
-                            ) : (
+                        <div className="grid grid-cols-2 gap-3">
+                            <StatsCard icon={<Club size={16} />} label="Wins" value={user.stats?.wins || 0} color="emerald" />
+                            <StatsCard icon={<Diamond size={16} />} label="Win Rate" value={`${user.stats?.games > 0 ? ((user.stats.wins / user.stats.games) * 100).toFixed(0) : 0}%`} color="yellow" />
+                            <StatsCard icon={<Spade size={16} />} label="Total Games" value={user.stats?.games || 0} color="blue" />
+                            <StatsCard icon={<Heart size={16} />} label="Peak Bid" value={user.stats?.highestScore || '---'} color="rose" />
+                        </div>
+
+                        <div className="bg-black/60 rounded-[2rem] border border-white/10 p-6 space-y-4 shadow-xl">
+                            <label className="block text-[10px] font-black uppercase text-white/20 tracking-widest italic ml-1">Account Security</label>
+                            <div className="space-y-4">
                                 <div className="flex flex-col gap-2">
-                                    <div className="flex justify-between items-center px-1">
-                                        <label className="text-[9px] font-black uppercase text-white/40 leading-none">Promotion Keyphrase:</label>
-                                        <span className="text-[7px] text-yellow-400 bg-yellow-400/5 px-2 py-0.5 rounded border border-yellow-400/10 font-bold uppercase">PRO DEMAND</span>
-                                    </div>
+                                    <label className="text-[9px] font-black uppercase text-white/40 ml-1">Verified Email:</label>
                                     <div className="flex gap-2">
                                         <input 
-                                            type="password"
-                                            value={promoPass}
-                                            onChange={(e) => setPromoPass(e.target.value)}
-                                            placeholder="Enter passcode"
-                                            className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-yellow-500 outline-none transition-all flex-1 font-bold shadow-inner font-mono tracking-widest text-center"
+                                            value={profileEmail}
+                                            onChange={(e) => setProfileEmail(e.target.value)}
+                                            placeholder="Enter your email"
+                                            className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-emerald-500 outline-none transition-all flex-1 font-bold shadow-inner"
                                         />
                                         <button 
                                             type="button"
-                                            onClick={handlePromotionVerify}
-                                            disabled={isVerifyingPromo || !promoPass}
-                                            className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black text-[10px] font-black px-6 rounded-xl transition-all uppercase tracking-widest shadow-lg active:scale-95 flex items-center justify-center min-w-[80px]"
+                                            onClick={updateProfile}
+                                            disabled={isUpdatingProfile}
+                                            className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-black text-[10px] font-black px-6 rounded-xl transition-all uppercase tracking-widest shadow-lg active:scale-95"
                                         >
-                                            {isVerifyingPromo ? '...' : 'Verify'}
+                                            {isUpdatingProfile ? '...' : 'Sync'}
                                         </button>
                                     </div>
-                                    {promoError && <p className="text-[8px] font-black uppercase tracking-wider text-rose-400 ml-1 mt-1">{promoError}</p>}
-                                    {promoSuccess && <p className="text-[8px] font-black uppercase tracking-wider text-emerald-400 ml-1 mt-1">Verified with success!</p>}
                                 </div>
-                            )}
+                            </div>
+                        </div>
+
+                        <div className="bg-black/60 rounded-[2rem] border border-white/10 p-6 space-y-4 shadow-xl">
+                            <label className="block text-[10px] font-black uppercase text-white/20 tracking-widest italic ml-1 flex items-center gap-1.5">
+                                <span className="text-yellow-400">★</span> VERIFY ACCOUNT STATUS
+                            </label>
+                            <div className="space-y-4">
+                                {user.isVerified ? (
+                                    <div className="p-4 bg-emerald-500/10 border border-emerald-500/10 rounded-2xl flex items-center gap-3">
+                                        <VerifiedBadge size={28} />
+                                        <div>
+                                            <p className="text-[11px] font-black uppercase tracking-wider text-emerald-400">Verified Player Status Active</p>
+                                            <p className="text-[8px] uppercase tracking-wider text-white/40 leading-normal mt-0.5">Your official checkmark has been fully applied. Your title is highlighted across all live sessions.</p>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex justify-between items-center px-1">
+                                            <label className="text-[9px] font-black uppercase text-white/40 leading-none">Promotion Keyphrase:</label>
+                                            <span className="text-[7px] text-yellow-400 bg-yellow-400/5 px-2 py-0.5 rounded border border-yellow-400/10 font-bold uppercase">PRO DEMAND</span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                type="password"
+                                                value={promoPass}
+                                                onChange={(e) => setPromoPass(e.target.value)}
+                                                placeholder="Enter passcode"
+                                                className="bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-xs text-white focus:border-yellow-500 outline-none transition-all flex-1 font-bold shadow-inner font-mono tracking-widest text-center"
+                                            />
+                                            <button 
+                                                type="button"
+                                                onClick={handlePromotionVerify}
+                                                disabled={isVerifyingPromo || !promoPass}
+                                                className="bg-yellow-500 hover:bg-yellow-400 disabled:opacity-50 text-black text-[10px] font-black px-6 rounded-xl transition-all uppercase tracking-widest shadow-lg active:scale-95 flex items-center justify-center min-w-[80px]"
+                                            >
+                                                {isVerifyingPromo ? '...' : 'Verify'}
+                                            </button>
+                                        </div>
+                                        {promoError && <p className="text-[8px] font-black uppercase tracking-wider text-rose-400 ml-1 mt-1">{promoError}</p>}
+                                        {promoSuccess && <p className="text-[8px] font-black uppercase tracking-wider text-emerald-400 ml-1 mt-1">Verified with success!</p>}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
+                ) : (
+                    <div className="flex-1 overflow-y-auto custom-scrollbar pr-1 space-y-6">
+                        {(() => {
+                           const lp = Math.max(0, (user.stats?.wins || 0) * 25 - ((user.stats?.games || 0) - (user.stats?.wins || 0)) * 10);
+                           
+                           const getLeagueData = (val: number) => {
+                              if (val >= 1000) return { name: 'GRANDMASTER', label: 'Tier V • Grandmaster', color: 'text-yellow-400', banner: 'from-yellow-500/15 to-amber-500/25 border-yellow-500/40', badge: '👑', req: '1000 LP', reward: '🌟 Exclusive Gold-rimmed obsidian card back, Elite title, Verified status.' };
+                              if (val >= 600) return { name: 'PLATINUM', label: 'Tier IV • Platinum', color: 'text-sky-400', banner: 'from-sky-500/15 to-blue-500/25 border-sky-500/40', badge: '💎', req: '600 LP', reward: '🛡️ Platinum-gilded profile borders & special neon reactions Pack.' };
+                              if (val >= 300) return { name: 'GOLD', label: 'Tier III • Gold', color: 'text-amber-400', banner: 'from-amber-500/15 to-yellow-600/25 border-amber-500/40', badge: '🥇', req: '300 LP', reward: '✨ Gold profile badge & matching royal velvet table finish.' };
+                              if (val >= 100) return { name: 'SILVER', label: 'Tier II • Silver', color: 'text-slate-200', banner: 'from-slate-400/15 to-slate-500/25 border-slate-500/40', badge: '🥈', req: '100 LP', reward: '🎖️ Silver player status & custom name color flair.' };
+                              return { name: 'BRONZE', label: 'Tier I • Bronze', color: 'text-amber-700', banner: 'from-amber-800/15 to-amber-900/25 border-amber-800/30', badge: '🥉', req: '0 LP', reward: '🏁 Companion avatar icons pack & Bronze Rank emblem.' };
+                           };
+
+                           const activeL = getLeagueData(lp);
+                           const allLeagues = [
+                              { key: 'BRONZE', name: 'Bronze', badge: '🥉', req: '0-99 LP', desc: 'Rookie Starter. Master follow-suit fundamentals.' },
+                              { key: 'SILVER', name: 'Silver', badge: '🥈', req: '100-299 LP', desc: 'Active Strategist. Showcase advanced bid estimation.' },
+                              { key: 'GOLD', name: 'Gold', badge: '🥇', req: '300-599 LP', desc: 'Tournament Veteran. High level cooperation.' },
+                              { key: 'PLATINUM', name: 'Platinum', badge: '💎', req: '600-999 LP', desc: 'Elite Contender. Master high bids and Hokm control.' },
+                              { key: 'GRANDMASTER', name: 'Grandmaster', badge: '👑', req: '1000+ LP', desc: 'Deep Legend. Grandmaster status on public matches.' }
+                           ];
+
+                           const displayedL = hoveredLeague ? getLeagueData(hoveredLeague === 'Bronze' ? 0 : hoveredLeague === 'Silver' ? 150 : hoveredLeague === 'Gold' ? 400 : hoveredLeague === 'Platinum' ? 700 : 1200) : activeL;
+
+                           return (
+                              <div className="space-y-6">
+                                 {/* Active Rank Large Display */}
+                                 <div className="p-6 rounded-[2.5rem] bg-gradient-to-br from-black/40 to-black/60 border border-white/5 shadow-2xl relative overflow-hidden text-center">
+                                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-emerald-500/[0.03] rounded-full blur-3xl pointer-events-none" />
+                                    
+                                    <div className="relative z-10 space-y-3 font-sans">
+                                       <p className="text-[10px] font-black text-emerald-400 uppercase tracking-[0.3em] italic">YOUR S1 RANKED DIVISION</p>
+                                       
+                                       {/* Holographic glowing Emblem */}
+                                       <div className="w-24 h-24 mx-auto rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-5xl shadow-[0_0_30px_rgba(16,185,129,0.1)] relative group cursor-pointer hover:scale-105 transition-all duration-300">
+                                          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-emerald-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                                          <span className="relative z-10">{activeL.badge}</span>
+                                       </div>
+
+                                       <div>
+                                          <h3 className="text-2xl font-black text-white tracking-tight uppercase leading-none">{activeL.name}</h3>
+                                          <p className="text-white/40 text-[9px] font-bold uppercase tracking-widest mt-1">{activeL.label}</p>
+                                       </div>
+
+                                       {/* LP Score bar */}
+                                       <div className="space-y-1.5 pt-2 max-w-[240px] mx-auto">
+                                          <div className="flex justify-between text-[8px] font-black tracking-widest uppercase text-slate-400">
+                                             <span className="text-emerald-400 font-mono">{lp} LP</span>
+                                             <span className="text-white/30 font-mono">NEXT TIER</span>
+                                          </div>
+                                          <div className="h-2 bg-black/60 rounded-full overflow-hidden p-[1px] border border-white/5 shadow-inner">
+                                             <div 
+                                                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-1000 shadow-[0_0_10px_rgba(16,185,129,0.4)]" 
+                                                style={{ width: `${activeL.name === 'GRANDMASTER' ? 100 : activeL.name === 'PLATINUM' ? ((lp - 600)/400)*100 : activeL.name === 'GOLD' ? ((lp - 300)/300)*100 : activeL.name === 'SILVER' ? ((lp - 100)/200)*100 : (lp/100)*100}%` }}
+                                             />
+                                          </div>
+                                       </div>
+                                    </div>
+                                 </div>
+
+                                 {/* Interactive Roadmap Layout */}
+                                 <div className="space-y-3">
+                                    <label className="block text-[10px] uppercase font-black tracking-widest text-white/30 ml-2">Ladder Tiers Roadmap</label>
+                                    <div className="grid grid-cols-5 gap-1.5 bg-black/40 p-2 border border-white/5 rounded-2xl">
+                                       {allLeagues.map((l) => {
+                                          const isCurrent = activeL.name.toLowerCase() === l.key.toLowerCase();
+                                          const isHovered = hoveredLeague === l.name;
+                                          return (
+                                             <button
+                                                key={l.key}
+                                                type="button"
+                                                onMouseEnter={() => setHoveredLeague(l.name)}
+                                                onMouseLeave={() => setHoveredLeague(null)}
+                                                onClick={() => setHoveredLeague(l.name)}
+                                                className={`flex flex-col items-center p-2 rounded-xl transition-all duration-300 relative border ${isCurrent ? 'bg-emerald-500/10 border-emerald-500/30' : 'border-transparent hover:bg-white/5'} ${isHovered ? 'scale-105 shadow-xl border-white/10 bg-white/5' : ''}`}
+                                             >
+                                                {isCurrent && (
+                                                   <span className="absolute -top-1.5 bg-emerald-500 text-black text-[5.5px] font-black px-1.5 py-0.5 rounded-full uppercase scale-90 tracking-tighter">MY TIER</span>
+                                                )}
+                                                <span className="text-2xl filter drop-shadow-md mb-1">{l.badge}</span>
+                                                <span className={`text-[8px] font-black uppercase text-center ${isCurrent ? 'text-emerald-400' : 'text-white/40'}`}>{l.name}</span>
+                                             </button>
+                                          );
+                                       })}
+                                    </div>
+                                 </div>
+
+                                 {/* Dynamic Node Details Display */}
+                                 <div className={`p-5 rounded-3xl border bg-gradient-to-br ${displayedL.banner} transition-all duration-500 space-y-2.5 relative`}>
+                                    <div className="absolute top-4 right-4 text-[7px] font-black bg-emerald-400/20 text-emerald-300 px-2 py-0.5 rounded tracking-widest uppercase">Division Stats</div>
+                                    <div className="flex justify-between items-center pb-2 border-b border-white/5">
+                                       <div className="flex items-center gap-2">
+                                          <span className="text-2xl">{displayedL.badge}</span>
+                                          <div>
+                                             <h4 className="text-[12px] font-black text-white uppercase tracking-wider">{displayedL.name} REPT</h4>
+                                             <p className="text-[7.5px] text-white/40 font-bold uppercase tracking-widest leading-none mt-0.5">MINIMUM REQUIREMENTS: {displayedL.req}</p>
+                                          </div>
+                                       </div>
+                                    </div>
+                                    <div className="space-y-1 text-xs leading-normal font-sans">
+                                       <p className="text-[10px] text-white/50 leading-relaxed font-bold">
+                                          {allLeagues.find(a => a.name.toLowerCase() === displayedL.name.toLowerCase())?.desc}
+                                       </p>
+                                       <div className="pt-2">
+                                          <p className="text-[8px] font-black text-yellow-400 uppercase tracking-widest mb-1 leading-none">🎁 Division rewards:</p>
+                                          <p className="text-[10px] text-white/95 font-bold leading-relaxed">
+                                             {displayedL.reward}
+                                          </p>
+                                        </div>
+                                    </div>
+                                 </div>
+
+                                 <div className="bg-yellow-500/5 border border-yellow-500/10 p-4 rounded-xl flex gap-3 text-center justify-center items-center">
+                                    <span className="text-sm">🎲</span>
+                                    <p className="text-[8.5px] text-white/40 font-black uppercase tracking-widest leading-relaxed">
+                                       LP is automatically calculated based on match outcomes (+25 LP on wins, -10 LP on defeats).
+                                    </p>
+                                 </div>
+                              </div>
+                           );
+                        })()}
+                    </div>
+                )}
 
                 <div className="mt-6 shrink-0">
                     <button onClick={() => setShowProfile(false)} className="w-full py-4 bg-white/5 hover:bg-white/10 text-white font-black rounded-2xl border border-white/10 uppercase tracking-[0.3em] transition-all text-[10px] shadow-lg">Close Card</button>
@@ -603,7 +745,7 @@ export default function Lobby({ onCreate, onJoin, error, lastRoomId }: LobbyProp
           Team Red vs Team Blue • Classic Card Game
         </p>
         <p className="text-[10px] text-emerald-500 font-black mt-4 uppercase tracking-[0.2em]">
-          Deep Shelem v1.3.2 • DeepInk Team
+          Deep Shelem v1.4.5 • DeepInk Team
         </p>
       </div>
     </div>

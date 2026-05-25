@@ -3,7 +3,7 @@ import type { Socket } from 'socket.io-client';
 import { motion, AnimatePresence } from 'motion/react';
 import Card, { CardData, Suit } from './Card';
 import Chat from './Chat';
-import { Users, Info, Settings, HelpCircle, CheckCircle2, X, Volume2, VolumeX, Eye, LogOut, Flag, Crown, Copy, Newspaper } from 'lucide-react';
+import { Users, Info, Settings, HelpCircle, CheckCircle2, X, Volume2, VolumeX, Eye, LogOut, Flag, Crown, Copy, Newspaper, Pause, Play } from 'lucide-react';
 
 interface GameBoardProps {
   room: any;
@@ -13,7 +13,7 @@ interface GameBoardProps {
 
 const AVATAR_COLORS: { [key: string]: string } = {
   '👤': 'bg-slate-600',
-  '🧔': 'bg-blue-500',
+  '👽': 'bg-violet-600',
   '👨': 'bg-emerald-500',
   '👩': 'bg-rose-500',
   '👴': 'bg-amber-500',
@@ -94,6 +94,11 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
     }
 
     const updateTimer = () => {
+      if (room.isTimerPaused) {
+        const remaining = Math.max(0, Math.ceil((room.turnRemainingDuration || 0) / 1000));
+        setTimeLeft(remaining);
+        return;
+      }
       const elapsed = Date.now() - room.turnStartedAt;
       const remaining = Math.max(0, Math.ceil((room.turnDuration - elapsed) / 1000));
       setTimeLeft(remaining);
@@ -103,7 +108,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
     const interval = setInterval(updateTimer, 200);
 
     return () => clearInterval(interval);
-  }, [room.turnStartedAt, room.turnDuration, room.currentTurn]);
+  }, [room.turnStartedAt, room.turnDuration, room.currentTurn, room.isTimerPaused, room.turnRemainingDuration]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -590,6 +595,28 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
             >
               <HelpCircle size={18} />
             </button>
+            {isHost && (
+              <button 
+                onClick={() => room.phase !== 'LOBBY' && room.phase !== 'GAME_OVER' && socket.emit('toggle_pause_timer', { roomId: room.id, pause: !room.isTimerPaused })}
+                disabled={room.phase === 'LOBBY' || room.phase === 'GAME_OVER'}
+                className={`p-2.5 rounded-full transition-all border shrink-0 ${
+                  room.phase === 'LOBBY' || room.phase === 'GAME_OVER'
+                    ? 'bg-white/5 border-white/5 text-white/20 cursor-not-allowed opacity-40'
+                    : room.isTimerPaused 
+                      ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-500 animate-pulse shadow-[0_0_15px_rgba(234,179,8,0.2)]' 
+                      : 'bg-white/5 hover:bg-white/10 border-white/10 text-rose-400 hover:text-rose-300'
+                }`}
+                title={
+                  room.phase === 'LOBBY' || room.phase === 'GAME_OVER'
+                    ? "Pause unavailable (Game hasn't started)"
+                    : room.isTimerPaused 
+                      ? "Resume Turn Timer" 
+                      : "Pause Turn Timer"
+                }
+              >
+                {room.isTimerPaused ? <Play size={18} /> : <Pause size={18} />}
+              </button>
+            )}
             <button 
               onClick={() => setShowSettings(true)}
               className="p-2.5 bg-white/5 hover:bg-white/10 rounded-full transition-all border border-white/10 text-white/60"
@@ -931,12 +958,13 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
                   <div className={`
                     w-16 h-16 rounded-full border-4 flex items-center justify-center text-2xl transition-all duration-500 relative z-10 overflow-hidden
-                    \${isTurn ? 'border-yellow-500 scale-110 shadow-[0_0_30px_rgba(234,179,8,0.6)]' : 'border-white/20'}
+                    ${isTurn ? 'border-yellow-500 scale-110 shadow-[0_0_30px_rgba(234,179,8,0.6)]' : 'border-white/20'}
                   `}>
                     <PlayerAvatar avatar={player.avatar || '👤'} />
                     {isTurn && timeLeft !== null && (
-                      <div className="absolute inset-0 bg-black/75 flex items-center justify-center font-mono font-black text-yellow-400 text-lg z-30 select-none animate-pulse rounded-full border border-yellow-400/55">
-                        {timeLeft}
+                      <div className="absolute inset-0 bg-black/75 flex flex-col items-center justify-center font-mono font-black text-yellow-400 text-lg z-30 select-none animate-pulse rounded-full border border-yellow-400/55">
+                        <span className="text-sm font-black leading-none">{timeLeft}s</span>
+                        {room.isTimerPaused && <span className="text-[6.5px] text-yellow-500 font-black tracking-widest leading-none mt-0.5">PAUSED</span>}
                       </div>
                     )}
                     {isTurn && (
@@ -974,51 +1002,115 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
           <div className="absolute bottom-[-10px] md:bottom-[-20px] left-1/2 -translate-x-1/2 z-30 pointer-events-auto w-full max-w-7xl mx-auto overflow-hidden">
             {isSpectator && revealAllHands && room.phase !== 'LOBBY' ? (
                 <div className="flex flex-col items-center mb-10 scale-95 md:scale-100 origin-bottom">
-                    <div className="bg-black/90 backdrop-blur-md border border-yellow-500/30 rounded-3xl p-4 shadow-2xl max-w-2xl w-full max-h-[180px] overflow-y-auto custom-scrollbar">
-                        <div className="flex justify-between items-center mb-3 pb-2 border-b border-white/5">
+                    <div className="bg-slate-950/95 backdrop-blur-xl border-2 border-yellow-500/40 rounded-[2.5rem] p-5 shadow-[0_0_50px_rgba(234,179,8,0.25)] max-w-4xl w-full max-h-[220px] overflow-y-auto custom-scrollbar">
+                        <div className="flex justify-between items-center mb-4 pb-2.5 border-b border-white/5">
                             <span className="text-[10px] font-black text-yellow-500 uppercase tracking-widest flex items-center gap-2">
-                                <Eye size={12} className="animate-pulse text-yellow-500" />
-                                Spectator X-Ray (All Player Hands)
+                                <Eye size={14} className="animate-pulse text-yellow-400" />
+                                Quantum X-Ray Panel (All Active Hands)
                             </span>
-                            <span className="text-[7px] bg-yellow-500/15 text-yellow-400 px-2 py-0.5 rounded border border-yellow-500/20 font-black">CASTING INTELLIGENCE MAP</span>
+                            <div className="flex items-center gap-2">
+                               <span className="text-[7px] bg-yellow-500/10 text-yellow-400 px-2 py-0.5 rounded border border-yellow-500/20 font-black tracking-wider uppercase">TACTICAL REALTIME HUD</span>
+                               {room.hokm && (
+                                  <span className="text-[7px] bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded border border-emerald-500/20 font-black tracking-wider uppercase flex items-center gap-1">
+                                     <span>TRUMP:</span>
+                                     <SuitIcon suit={room.hokm} size={8} />
+                                  </span>
+                               )}
+                            </div>
                         </div>
-                        <div className="grid grid-cols-2 gap-3">
-                            {room.players.map((p: any, pIdx: number) => (
-                                <div 
-                                    key={p.id} 
-                                    onClick={() => setSpectatorPerspective(pIdx)}
-                                    className={`
-                                        bg-white/5 hover:bg-white/10 border rounded-2xl p-2.5 flex flex-col gap-1.5 min-w-0 transition-all cursor-pointer
-                                        ${spectatorPerspective === pIdx ? 'border-yellow-500/30 bg-yellow-500/5' : 'border-white/5'}
-                                    `}
-                                >
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-[10px] font-black text-white truncate max-w-[120px]">
-                                            {p.name} {spectatorPerspective === pIdx ? '👁️' : ''}
-                                        </span>
-                                        <span className="text-[8px] font-mono text-white/30">{p.cards.length} Cards</span>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {room.players.map((p: any, pIdx: number) => {
+                                const isHakam = p.id === room.highestBid.bidderId;
+                                const isTurn = room.players.indexOf(p) === room.currentTurn;
+                                
+                                // Calculate points in hand
+                                const pointCardsCount = p.cards.filter((c: any) => c.rank === '5' || c.rank === '10' || c.rank === 'A').length;
+                                const handPoints = p.cards.reduce((sum: number, c: any) => {
+                                    if (c.rank === '5') return sum + 5;
+                                    if (c.rank === '10' || c.rank === 'A') return sum + 10;
+                                    return sum;
+                                }, 0);
+                                const trumpsCount = room.hokm ? p.cards.filter((c: any) => c.suit === room.hokm).length : 0;
+
+                                // Sort player cards - trumps first, then other suits
+                                const sortedHandCards = [...p.cards].sort((a: any, b: any) => {
+                                    if (room.hokm) {
+                                        if (a.suit === room.hokm && b.suit !== room.hokm) return -1;
+                                        if (a.suit !== room.hokm && b.suit === room.hokm) return 1;
+                                    }
+                                    return a.suit.localeCompare(b.suit) || b.rank.localeCompare(a.rank);
+                                });
+
+                                return (
+                                    <div 
+                                        key={p.id} 
+                                        onClick={() => isSpectator && setSpectatorPerspective(pIdx)}
+                                        className={`
+                                            bg-white/5 hover:bg-white/10 border rounded-[2rem] p-3.5 flex flex-col gap-2 min-w-0 transition-all cursor-pointer relative overflow-hidden group/item
+                                            ${spectatorPerspective === pIdx && isSpectator ? 'border-yellow-500/40 bg-yellow-500/5' : 'border-white/5'}
+                                            ${isTurn ? 'ring-1 ring-emerald-500 border-emerald-500/30' : ''}
+                                        `}
+                                    >
+                                        <div className="flex justify-between items-center relative z-10">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[11px] font-black text-white truncate max-w-[120px] flex items-center gap-1">
+                                                    {p.name}
+                                                    {isHakam && <Crown size={10} className="text-yellow-400 fill-yellow-400/20" />}
+                                                    {isTurn && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping inline-block" />}
+                                                </span>
+                                                <span className="text-[7px] uppercase font-bold text-white/40 tracking-wider">
+                                                   Team {p.team} {isHakam ? '• HAKAM' : ''}
+                                                </span>
+                                            </div>
+                                            <div className="flex gap-1.5 text-[8px] font-mono">
+                                                <span className="bg-white/5 text-white/50 px-1.5 py-0.5 rounded border border-white/5">
+                                                    {p.cards.length} C
+                                                </span>
+                                                {trumpsCount > 0 && (
+                                                    <span className="bg-yellow-500/10 text-yellow-400 px-1.5 py-0.5 rounded border border-yellow-500/20 font-bold">
+                                                        {trumpsCount} Trump
+                                                    </span>
+                                                )}
+                                                {handPoints > 0 && (
+                                                    <span className="bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 font-bold">
+                                                        {handPoints} pts
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+                                        
+                                        <div className="flex flex-wrap gap-1 leading-none relative z-10">
+                                            {sortedHandCards.length > 0 ? (
+                                                sortedHandCards.map((c: any, cIdx: number) => {
+                                                    const isTrump = room.hokm === c.suit;
+                                                    const isPointCard = c.rank === '5' || c.rank === '10' || c.rank === 'A';
+                                                    const points = c.rank === '5' ? 5 : (c.rank === '10' || c.rank === 'A' ? 10 : 0);
+                                                    return (
+                                                        <div 
+                                                            key={cIdx} 
+                                                            className={`
+                                                                px-2 py-1 rounded-xl text-[8px] font-black border flex items-center gap-1 select-none transition-transform hover:scale-110 relative
+                                                                ${c.suit === 'SPADES' || c.suit === 'CLUBS' ? 'bg-zinc-950 border-zinc-800 text-zinc-300' : 'bg-red-950/40 border-red-900/40 text-red-300'}
+                                                                ${isTrump ? 'ring-1 ring-yellow-500 text-yellow-400 font-extrabold bg-gradient-to-r from-yellow-500/15 to-amber-500/15 border-yellow-500/40' : ''}
+                                                            `}
+                                                        >
+                                                            <span className="text-[9.5px] leading-none">{c.rank}</span>
+                                                            <SuitIcon suit={c.suit} size={8} />
+                                                            {isPointCard && (
+                                                                <span className="absolute -top-1 -right-1.5 bg-emerald-500 text-black font-mono font-black text-[5.5px] px-0.5 py-0 rounded border border-emerald-400/35 scale-90">
+                                                                   +{points}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })
+                                            ) : (
+                                                <span className="text-[8px] text-white/20 italic">No cards left</span>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="flex flex-wrap gap-1 leading-none">
-                                        {p.cards && p.cards.length > 0 ? (
-                                            p.cards.map((c: any, cIdx: number) => (
-                                                <div 
-                                                    key={cIdx} 
-                                                    className={`
-                                                        px-1.5 py-0.5 rounded text-[8px] font-black border flex items-center gap-0.5 select-none
-                                                        ${c.suit === 'SPADES' || c.suit === 'CLUBS' ? 'bg-zinc-950 border-zinc-800 text-zinc-300' : 'bg-red-950/40 border-red-900/40 text-red-300'}
-                                                        ${room.hokm === c.suit ? 'ring-1 ring-yellow-500 text-yellow-500 font-extrabold' : ''}
-                                                    `}
-                                                >
-                                                    <span className="text-[9px] leading-none">{c.rank}</span>
-                                                    <SuitIcon suit={c.suit} size={7} />
-                                                </div>
-                                            ))
-                                        ) : (
-                                            <span className="text-[7px] text-white/25 italic">No cards left</span>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 </div>
@@ -1149,7 +1241,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
           <div className="bg-white/5 border border-white/10 rounded-[32px] p-5 flex flex-col flex-1 min-h-0 backdrop-blur-md -webkit-backdrop-blur-md">
             <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-4 flex justify-between items-center">
               Room Analysis
-              <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">v1.3.2</span>
+              <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-mono">v1.4.5</span>
             </h3>
             
             <div className={`grid grid-cols-2 gap-4 text-center border-b border-white/10 pb-6 mb-6`}>
@@ -1281,7 +1373,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                       <div key={p.id} className={`bg-white/5 rounded-2xl p-3 border transition-all ${isTurn ? 'border-emerald-500/40 bg-emerald-500/5' : 'border-white/5 hover:bg-white/10'}`}>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-full overflow-hidden border \${isTurn ? 'border-emerald-500' : 'border-white/10'}`}>
+                                <div className={`w-8 h-8 rounded-full overflow-hidden border ${isTurn ? 'border-emerald-500' : 'border-white/10'}`}>
                                     <PlayerAvatar avatar={p.avatar || '👤'} />
                                 </div>
                                 <div>
@@ -1500,28 +1592,28 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                     <div className="space-y-4 p-5 bg-gradient-to-br from-emerald-500/15 to-emerald-900/10 border border-emerald-500/25 rounded-3xl relative overflow-hidden group">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700 pointer-events-none" />
                         <div className="flex items-center justify-between relative z-10">
-                            <span className="bg-emerald-500 text-black text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest leading-none shadow-md">v1.5.0 Stable</span>
+                            <span className="bg-emerald-500 text-black text-[9px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest leading-none shadow-md">v1.4.5 Stable</span>
                             <span className="text-[10px] font-bold text-emerald-400">LATEST RELEASE</span>
                         </div>
-                        <h3 className="text-white font-black text-base relative z-10 uppercase tracking-wide">Sound Turn Alert & Verifications</h3>
+                        <h3 className="text-white font-black text-base relative z-10 uppercase tracking-wide">3D Cards, Ranked Leagues & Turn Alert</h3>
                         <div className="space-y-3.5 text-xs text-white/75 leading-relaxed relative z-10">
-                            <p className="text-[10px] text-white/40 leading-normal -mt-1 font-medium">An elegant selection of audio chimes, authentication verifications, display settings, and luxurious textures are ready for your next table session!</p>
+                            <p className="text-[10px] text-white/40 leading-normal -mt-1 font-medium">An elegant selection of audio chimes, 3D card spring interactions, multiplayer league divisions, and luxurious textures are ready for your next table session!</p>
                             
                             <div className="flex gap-3">
+                                <div className="p-1 rounded bg-amber-500/20 text-amber-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0 select-none">NEW</div>
+                                <p><span className="text-white font-bold">Interactive 3D Card Tilts:</span> Experience true responsive tactile depth. Hovering cards now utilizes precise 3D perspective transforms with adaptive spring physical movements and realistic dropshadow elevations.</p>
+                            </div>
+                            <div className="flex gap-3">
                                 <div className="p-1 rounded bg-emerald-500/20 text-emerald-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0 select-none">NEW</div>
-                                <p><span className="text-white font-bold">Resonant Turn Chimes:</span> Wake up your attention with a custom dual-frequency chime sound whenever active turn switches to you. Completely configurable in display toggles.</p>
+                                <p><span className="text-white font-bold">Ranked Leagues (S1):</span> Track your ladder standing! Standardized League Points (LP) are automatically tallied on wins/losses, introducing an interactive roadmap spanning Bronze to Grandmaster with customizable reward highlights.</p>
                             </div>
                             <div className="flex gap-3">
                                 <div className="p-1 rounded bg-teal-500/20 text-teal-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0 select-none">NEW</div>
-                                <p><span className="text-white font-bold">Verified Account Promo:</span> Secure your official verified checkmark badges from Hall of Fame menu by entering the exclusive verification passcode phrase.</p>
+                                <p><span className="text-white font-bold">Host Game Pause Command:</span> Complete control is here. Session hosts can quickly trigger live timers pause or resume directly via the visual header commands.</p>
                             </div>
                             <div className="flex gap-3">
                                 <div className="p-1 rounded bg-purple-500/20 text-purple-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0 select-none">NEW</div>
-                                <p><span className="text-white font-bold">Custom Display Toggles:</span> Clean up clutter! Option added to quickly show or hide the active spectators list next to table deck.</p>
-                            </div>
-                            <div className="flex gap-3">
-                                <div className="p-1 rounded bg-amber-500/20 text-amber-300 font-black text-[8px] h-fit uppercase tracking-wider shrink-0 select-none">NEW</div>
-                                <p><span className="text-white font-bold">Luxurious Finishes:</span> Add elite flair with three new table surface selections: <span className="text-amber-400">Classic Linen</span>, <span className="text-amber-400">Brushed Steel</span>, and <span className="text-amber-400">Padded Velvet</span>.</p>
+                                <p><span className="text-white font-bold">Resonant Turn Chimes:</span> Configurable turn chime sounds toggleable inside settings alerts player right when active turns change to them.</p>
                             </div>
                         </div>
                     </div>
@@ -1550,7 +1642,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                         <span className="text-xl">🚀</span>
                         <div>
                             <p className="text-[9px] font-black text-yellow-500 uppercase tracking-widest leading-none mb-1">Coming Next</p>
-                            <p className="text-[11px] text-white/40 leading-normal font-medium leading-tight">Ranked multiplayer leagues, interactive card hover effects, and voice channels are cooking in our lab!</p>
+                            <p className="text-[11px] text-white/40 leading-normal font-medium leading-tight">In-room voice channels, custom card deck backs creator, and automatic tournament tournament lobbies are cooking in the lab!</p>
                         </div>
                     </div>
 
@@ -1574,7 +1666,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
                       <section>
                           <h3 className="text-yellow-500 font-black uppercase text-[10px] mb-1">Bidding</h3>
-                          <p>Starts at 100. Highest bidder (Hakam) picks Trump suit and gets 4 center cards.</p>
+                          <p>Starts at 100. Highest bidder (Hakam) picks Trump suit and gets 4 center cards. If all players pass, the deal is reset and new cards are distributed.</p>
                       </section>
 
                       <section>
@@ -1658,17 +1750,22 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
 
                           <div className="space-y-2">
                              <p className="text-[8px] font-black uppercase text-white/20 tracking-widest">Card Back Pattern</p>
-                             <div className="flex gap-2">
+                             <div className="grid grid-cols-3 gap-1.5">
                                 {[
-                                    { id: 'classic', color: 'bg-blue-900' },
-                                    { id: 'modern', color: 'bg-zinc-900' },
-                                    { id: 'royal', color: 'bg-yellow-900' }
+                                    { id: 'classic', color: 'bg-blue-900', name: 'Classic' },
+                                    { id: 'modern', color: 'bg-zinc-900', name: 'Modern' },
+                                    { id: 'royal', color: 'bg-yellow-900', name: 'Royal' },
+                                    { id: 'emerald', color: 'bg-emerald-950', name: 'Emerald' },
+                                    { id: 'obsidian', color: 'bg-stone-950 border-amber-500/15', name: 'Obsidian' },
+                                    { id: 'crimson', color: 'bg-red-950 border-red-900', name: 'Crimson' }
                                 ].map(back => (
                                     <button 
                                         key={back.id}
                                         onClick={() => setCardBack(back.id)}
-                                        className={`flex-1 h-6 rounded-lg border-2 transition-all ${cardBack === back.id ? 'border-white bg-white/10' : 'border-transparent bg-black/20'} ${back.color}`}
-                                    />
+                                        className={`h-7 rounded-lg border transition-all flex items-center justify-center font-bold text-[7px] uppercase tracking-tighter ${cardBack === back.id ? 'border-white bg-white/10 text-white font-extrabold' : 'border-white/5 bg-black/40 text-white/30'} ${back.color}`}
+                                    >
+                                        {back.name}
+                                    </button>
                                 ))}
                              </div>
                           </div>
@@ -1698,6 +1795,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                           <Toggle label="Chat" value={showChat} onChange={setShowChat} icon={<span className="text-[10px]">💬</span>} />
                           <Toggle label="Hide Player IDs" value={hidePlayerIds} onChange={setHidePlayerIds} icon={<span className="text-xs font-mono">#</span>} />
                           <Toggle label="Show Spectators list" value={showSpectatorView} onChange={setShowSpectatorView} icon={<Users size={12} />} />
+                          <Toggle label="Reveal All Hands" value={revealAllHands} onChange={setRevealAllHands} icon={<Eye size={12} />} />
                       </div>
                     </div>
 
@@ -1741,7 +1839,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
                       <div className="bg-black/30 p-4 rounded-2xl border border-white/5">
                         <div className="flex items-center justify-between mb-2">
                             <span className="text-[8px] font-black text-white/30 uppercase">Build Info</span>
-                            <span className="text-[8px] font-black text-emerald-400 uppercase">v1.4.0 Stable</span>
+                            <span className="text-[8px] font-black text-emerald-400 uppercase">v1.4.5 Stable</span>
                         </div>
                         <div className="flex items-center justify-between">
                             <span className="text-[8px] font-black text-white/30 uppercase">Region</span>
@@ -1840,7 +1938,7 @@ export default function GameBoard({ room, socket, playerName }: GameBoardProps) 
            </div>
         </div>
         <div className="text-[8px] md:text-[10px] font-black uppercase tracking-[0.1em] md:tracking-[0.2em] opacity-60">
-          Deep Shelem v1.3.2
+          Deep Shelem v1.4.5
         </div>
       </footer>
     </div>
@@ -1914,59 +2012,65 @@ function BiddingOverlay({ room, isMyTurn, onBid, isLoading }: any) {
     const lastBidderName = lastBidderId ? room.players.find((p:any) => p.id === lastBidderId)?.name : 'No one';
 
     return (
-        <div className="bg-[#14452f]/95 backdrop-blur-2xl -webkit-backdrop-blur-2xl p-6 md:p-8 rounded-[30px] md:rounded-[40px] border border-white/10 shadow-2xl w-full max-w-[480px]">
-            <h2 className="text-center text-[10px] font-black uppercase tracking-[0.2em] mb-4 md:mb-6 text-white/40">
-                {isMyTurn ? 'YOUR TURN TO BID' : 'WAITING FOR BIDS...'}
+        <div className="bg-slate-900/95 backdrop-blur-2xl -webkit-backdrop-blur-2xl p-6 md:p-8 rounded-[2.5rem] border border-emerald-500/20 shadow-[0_20px_50px_rgba(0,0,0,0.5)] w-full max-w-[640px]">
+            <h2 className="text-center text-[10px] font-black uppercase tracking-[0.25em] mb-5 md:mb-7 text-emerald-400 flex items-center justify-center gap-2">
+                <span className={`w-2 h-2 rounded-full ${isMyTurn ? 'bg-emerald-500 animate-ping' : 'bg-white/20 animate-pulse'}`} />
+                {isMyTurn ? 'YOUR TURN TO BID' : 'WAITING FOR PLAYER BIDS...'}
             </h2>
             
-            <div className="grid grid-cols-[1.5fr_1fr] gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-6 md:gap-8">
                 {/* Left Side: Bid History */}
-                <div className="space-y-3">
-                    <p className="text-[10px] font-black text-white/20 uppercase tracking-widest px-1">Player Bids</p>
+                <div className="space-y-4">
+                    <p className="text-[10px] font-black text-white/30 uppercase tracking-widest px-1 flex justify-between">
+                        <span>Active Table</span>
+                        <span className="text-emerald-500/60 font-mono">BIDS</span>
+                    </p>
                     <div className="space-y-2">
                         {room.players.map((p: any) => {
                             const bid = room.bids[p.id];
                             const isCurrent = room.currentTurn === room.players.indexOf(p);
                             return (
-                                <div key={p.id} className={`flex items-center justify-between p-3 rounded-2xl border transition-all ${isCurrent ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400' : 'bg-black/20 border-white/5 text-white/40'}`}>
-                                    <div className="flex items-center gap-2">
-                                        <div className="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center bg-black/40 text-[10px]">
+                                <div key={p.id} className={`flex items-center justify-between p-3 rounded-2xl border transition-all duration-300 ${isCurrent ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]' : 'bg-black/40 border-white/5 text-white/40'}`}>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <div className="w-6 h-6 rounded-lg overflow-hidden flex items-center justify-center bg-black/50 text-[10px] shrink-0">
                                             <PlayerAvatar avatar={p.avatar || '👤'} />
                                         </div>
-                                        <span className={`text-[10px] font-black uppercase tracking-widest truncate max-w-[80px]`}>{p.name}</span>
+                                        <span className={`text-[10px] font-black uppercase tracking-widest truncate ${isCurrent ? 'text-white' : ''}`}>{p.name}</span>
                                     </div>
-                                    <span className={`text-xs font-black ${bid === 'PASS' ? 'text-red-500/50' : bid ? 'text-yellow-500' : 'opacity-20'}`}>
-                                        {bid === 'PASS' ? 'PASSED' : bid ? bid : '...'}
+                                    <span className={`text-xs font-black shrink-0 px-2 py-0.5 rounded-lg ${bid === 'PASS' ? 'text-rose-500 bg-rose-950/20 border border-rose-900/10' : bid ? 'text-yellow-400 bg-yellow-950/30 border border-yellow-500/10' : 'opacity-20'}`}>
+                                        {bid === 'PASS' ? 'PASS' : bid ? bid : '...'}
                                     </span>
                                 </div>
                             );
                         })}
                     </div>
                     {lastBidderId && (
-                         <div className="mt-4 p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-2xl text-center">
-                            <p className="text-[9px] font-black text-yellow-500/40 uppercase tracking-[0.2em] mb-1">Current Highest</p>
-                            <p className="text-2xl font-black text-yellow-500">{room.highestBid.value}</p>
-                            <p className="text-[9px] font-bold text-white/30 uppercase mt-1">By {lastBidderName}</p>
+                         <div className="p-4 bg-yellow-500/5 border border-yellow-500/20 rounded-[1.5rem] text-center shadow-inner relative overflow-hidden group">
+                            <div className="absolute inset-0 bg-yellow-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
+                            <p className="text-[9px] font-black text-yellow-500/50 uppercase tracking-[0.2em] mb-0.5">Current Highest</p>
+                            <p className="text-3xl font-black text-yellow-400 tracking-tight leading-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.4)]">{room.highestBid.value}</p>
+                            <p className="text-[9px] font-bold text-white/40 uppercase mt-1.5 truncate max-w-full">By {lastBidderName}</p>
                          </div>
                     )}
                 </div>
 
                 {/* Right Side: Bid selection */}
-                <div className="flex flex-col gap-3">
-                    <p className="text-[10px] font-black text-white/20 uppercase tracking-widest px-1">Select Bid</p>
-                    <div className="h-[280px] overflow-y-auto custom-scrollbar pr-2 flex flex-col gap-2">
+                <div className="flex flex-col gap-4">
+                    <p className="text-[10px] font-black text-white/30 uppercase tracking-widest px-1">Select Value</p>
+                    <div className="max-h-[220px] overflow-y-auto custom-scrollbar pr-1 grid grid-cols-2 md:grid-cols-3 gap-2">
                         {bids.filter(b => b > room.highestBid.value).map(b => (
                                 <button
                                     key={b}
                                     disabled={!isMyTurn || isLoading}
                                     onClick={() => onBid(b)}
                                     className={`
-                                        w-full py-3 rounded-xl border-2 transition-all font-black text-sm relative overflow-hidden
-                                        ${isMyTurn ? 'bg-white/5 border-white/5 text-white hover:bg-emerald-500 hover:border-emerald-400 hover:text-black hover:scale-105 active:scale-95' : 'bg-white/5 border-transparent text-white/10 opacity-50 cursor-not-allowed'}
+                                        py-2.5 rounded-2xl border-2 transition-all duration-300 font-extrabold text-xs relative overflow-hidden flex flex-col items-center justify-center gap-0.5
+                                        ${isMyTurn ? 'bg-white/5 border-white/5 text-white hover:bg-emerald-500 hover:border-emerald-400 hover:text-black hover:scale-105 active:scale-95 shadow-md hover:shadow-emerald-500/20' : 'bg-white/5 border-transparent text-white/5 opacity-40 cursor-not-allowed'}
                                         ${isLoading ? 'opacity-70' : ''}
                                     `}
                                 >
-                                    {b}
+                                    <span className="text-[8px] font-bold opacity-40 leading-none">BID</span>
+                                    <span className="text-sm font-black leading-none">{b}</span>
                                     {isLoading && (
                                         <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
                                             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
@@ -1975,20 +2079,29 @@ function BiddingOverlay({ room, isMyTurn, onBid, isLoading }: any) {
                                 </button>
                             ))}
                             {isMyTurn && bids.filter(b => b > room.highestBid.value).length === 0 && (
-                                <p className="text-[10px] text-white/40 text-center italic mt-4">Highest possible bid reached</p>
+                                <div className="col-span-full py-8 text-center bg-white/5 rounded-2xl border border-white/5">
+                                    <p className="text-xs text-white/40 italic">Highest bid limit reached</p>
+                                </div>
                             )}
-                        </div>
+                    </div>
     
-                        <button
-                            disabled={!isMyTurn || isLoading}
-                            onClick={() => onBid('PASS')}
-                            className={`
-                                w-full py-4 mt-2 rounded-2xl font-black uppercase tracking-widest transition-all border-2 relative overflow-hidden
-                                ${isMyTurn ? 'bg-red-500/10 border-red-500/10 text-red-500 hover:bg-red-500 hover:text-white' : 'bg-white/5 border-transparent text-white/10 opacity-50 cursor-not-allowed'}
-                            `}
-                        >
-                            {isLoading ? '...' : 'Pass'}
-                        </button>
+                    <button
+                        disabled={!isMyTurn || isLoading}
+                        onClick={() => onBid('PASS')}
+                        className={`
+                            w-full py-3 rounded-2xl font-black uppercase tracking-widest transition-all duration-300 border border-rose-500/20 relative overflow-hidden flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98]
+                            ${isMyTurn ? 'bg-rose-500/15 text-rose-400 hover:bg-rose-600 hover:text-white shadow-lg hover:shadow-rose-600/35 border-rose-500/40 animate-pulse' : 'bg-white/5 border-transparent text-white/10 opacity-50 cursor-not-allowed'}
+                        `}
+                    >
+                        {isLoading ? (
+                            <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                            <>
+                               <span>👋</span>
+                               <span>Pass Turn</span>
+                            </>
+                        )}
+                    </button>
                 </div>
             </div>
         </div>

@@ -90,6 +90,7 @@ interface Player {
     games: number;
     highestScore: number;
   };
+  disconnectedAt?: number;
 }
 
 enum GamePhase {
@@ -122,9 +123,12 @@ interface Room {
   pointsThisRound: { [team: number]: number };
   roundCount: number;
   trickHistory: { winnerName: string; cards: Card[]; points: number }[];
-  resignRequest?: { requesterId: string; status: 'PENDING' | 'REJECTED' };
+  resignRequest?: { requesterId: string; status: 'PENDING' | 'REJECTED'; createdAt?: number };
   turnStartedAt?: number;
   turnDuration?: number;
+  isTimerPaused?: boolean;
+  turnRemainingDuration?: number;
+  lastActivityAt?: number;
 }
 
 const rooms: Map<string, Room> = new Map();
@@ -399,7 +403,8 @@ async function startServer() {
         bids: {},
         pointsThisRound: { 0: 0, 1: 0 },
         roundCount: 0,
-        trickHistory: []
+        trickHistory: [],
+        lastActivityAt: Date.now()
       };
       rooms.set(roomId, room);
       socket.join(roomId);
@@ -421,6 +426,8 @@ async function startServer() {
       if (existingPlayer) {
         existingPlayer.socketId = socket.id;
         existingPlayer.isVerified = isVerified;
+        delete existingPlayer.disconnectedAt;
+        room.lastActivityAt = Date.now();
         socket.join(roomId);
         socket.emit('player_joined', room);
         io.to(roomId).emit('game_update', room);
@@ -460,10 +467,76 @@ async function startServer() {
       }
     });
 
+    socket.on('toggle_pause_timer', ({ roomId, pause }) => {
+      const room = rooms.get(roomId);
+      if (!room) return;
+      
+      const isHostSender = room.players[0]?.socketId === socket.id;
+      if (!isHostSender) {
+        return socket.emit('error_msg', 'Only the room host can pause the timer.');
+      }
+
+      if (room.phase === GamePhase.LOBBY || room.phase === GamePhase.GAME_OVER) {
+        return socket.emit('error_msg', 'Timer cannot be paused before the game starts.');
+      }
+
+      room.isTimerPaused = !!pause;
+
+      if (room.isTimerPaused) {
+        if (room.turnStartedAt && room.turnDuration) {
+          const elapsed = Date.now() - room.turnStartedAt;
+          room.turnRemainingDuration = Math.max(0, room.turnDuration - elapsed);
+        } else {
+          room.turnRemainingDuration = 30000;
+        }
+        
+        const existingTimer = roomTimers.get(room.id);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          roomTimers.delete(room.id);
+        }
+        
+        room.messages.push({
+          id: nanoid(),
+          sender: 'SYSTEM',
+          text: '⏸️ The room host paused the turn timer.',
+          time: Date.now()
+        });
+        if (room.messages.length > 50) room.messages.shift();
+      } else {
+        if (room.turnRemainingDuration !== undefined) {
+          room.turnDuration = room.turnRemainingDuration;
+          delete room.turnRemainingDuration;
+        } else {
+          room.turnDuration = 30000;
+        }
+        room.turnStartedAt = Date.now();
+        
+        const timer = setTimeout(() => {
+          handleTurnTimeout(room);
+        }, room.turnDuration);
+        roomTimers.set(room.id, timer);
+
+        room.messages.push({
+          id: nanoid(),
+          sender: 'SYSTEM',
+          text: '▶️ The room host resumed the turn timer.',
+          time: Date.now()
+        });
+        if (room.messages.length > 50) room.messages.shift();
+      }
+
+      triggerGameUpdate(room);
+    });
+
     socket.on('place_bid', ({ roomId, bid }) => {
       const room = rooms.get(roomId);
       if (!room || room.phase !== GamePhase.BIDDING) return;
       if (room.players[room.currentTurn].socketId !== socket.id) return;
+
+      // Reset pauses
+      room.isTimerPaused = false;
+      delete room.turnRemainingDuration;
 
       const player = room.players[room.currentTurn];
       room.bids[player.id] = bid;
@@ -476,6 +549,13 @@ async function startServer() {
       
       if (allResponded && (activeBidders.length <= 1 || bid === 165)) {
         if (!room.highestBid.bidderId) {
+          room.messages.push({
+            id: nanoid(),
+            sender: 'SYSTEM',
+            text: '⚠️ All players passed the bid! Clean-slate reset: cards reshuffled and redealt.',
+            time: Date.now()
+          });
+          if (room.messages.length > 50) room.messages.shift();
           startNewRound(room);
         } else {
           room.phase = GamePhase.DISCARDING;
@@ -498,6 +578,10 @@ async function startServer() {
       if (!room || room.phase !== GamePhase.DISCARDING) return;
       if (room.players[room.currentTurn].socketId !== socket.id) return;
       
+      // Reset pauses
+      room.isTimerPaused = false;
+      delete room.turnRemainingDuration;
+
       room.hokm = hokm;
       const hakam = room.players[room.currentTurn];
       const discardPoints = calculateTrickPoints(discards);
@@ -515,7 +599,28 @@ async function startServer() {
       if (!room || room.phase !== GamePhase.PLAYING) return;
       if (room.players[room.currentTurn].socketId !== socket.id) return;
 
+      // Reset pauses
+      room.isTimerPaused = false;
+      delete room.turnRemainingDuration;
+
       const player = room.players[room.currentTurn];
+
+      // Guard: Do not allow playing if trick is already complete and waiting to resolve!
+      if (room.mode === '2_PLAYER') {
+        if (room.subPhase === 'HAND' && room.currentTrick.length >= 2) return;
+        if (room.subPhase === 'PILE' && room.currentTrick.length >= 4) return;
+        
+        // Guard: Prevent playing twice in the same subphase
+        if (room.subPhase === 'HAND' && room.currentTrick.some(t => t.playerId === player.id && !t.fromPile)) return;
+        if (room.subPhase === 'PILE' && room.currentTrick.some(t => t.playerId === player.id && t.fromPile)) return;
+      } else {
+        // 4-PLAYER
+        if (room.currentTrick.length >= 4) return;
+        
+        // Guard: Prevent playing twice in the same trick
+        if (room.currentTrick.some(t => t.playerId === player.id)) return;
+      }
+
       const playerCount = room.mode === '2_PLAYER' ? 2 : 4;
 
       if (room.mode === '2_PLAYER') {
@@ -677,7 +782,7 @@ async function startServer() {
         // 4 Player - Find teammate
         const teammateIdx = (playerIndex + 2) % 4;
         const teammate = room.players[teammateIdx];
-        room.resignRequest = { requesterId: player.id, status: 'PENDING' };
+        room.resignRequest = { requesterId: player.id, status: 'PENDING', createdAt: Date.now() };
         io.to(teammate.socketId).emit('resign_requested', { requesterName: player.name });
         io.to(roomId).emit('game_update', room);
       }
@@ -788,8 +893,10 @@ async function startServer() {
         const spectatorIdx = room.spectators.findIndex(s => s.socketId === socket.id);
         
         if (playerIdx !== -1) {
-          // In a real app we'd wait for reconnect, but for now we'll just log
+          room.players[playerIdx].disconnectedAt = Date.now();
+          room.lastActivityAt = Date.now();
           console.log(`Player ${room.players[playerIdx].name} disconnected from room ${roomId}`);
+          io.to(roomId).emit('game_update', room);
         } else if (spectatorIdx !== -1) {
           room.spectators.splice(spectatorIdx, 1);
           io.to(roomId).emit('game_update', room);
@@ -807,6 +914,87 @@ async function startServer() {
     });
   });
 
+  // Periodically check for abandoned, disconnected, or inactive matches to resolve them automatically after 1 hour (3600000 ms)
+  setInterval(() => {
+    const now = Date.now();
+    rooms.forEach((room, roomId) => {
+      // We only auto-resolve rooms currently in active phases (not LOBBY or GAME_OVER)
+      if (room.phase !== GamePhase.LOBBY && room.phase !== GamePhase.GAME_OVER) {
+        
+        // Scenario 1: Any client player has been disconnected/left for more than 1 hour (3,600,000 ms)
+        const disconnectedTimeoutPlayers = room.players.filter(p => p.disconnectedAt && (now - p.disconnectedAt >= 3600000));
+        if (disconnectedTimeoutPlayers.length > 0) {
+          // Resolve game: give win to the team that remained connected
+          const losingTeams = new Set(disconnectedTimeoutPlayers.map(p => p.team));
+          let winningTeam: 0 | 1 = 0;
+          if (losingTeams.has(0) && !losingTeams.has(1)) {
+            winningTeam = 1;
+          } else if (losingTeams.has(1) && !losingTeams.has(0)) {
+            winningTeam = 0;
+          } else {
+            // Both teams or neither have disconnected players, tie-breaker based on current scores
+            winningTeam = (room.scores[0] || 0) >= (room.scores[1] || 0) ? 0 : 1;
+          }
+
+          room.scores[winningTeam] = Math.max(room.scores[winningTeam] || 0, 660);
+          room.messages.push({
+            id: nanoid(),
+            sender: 'SYSTEM',
+            text: `⏱️ Automatic Resolution: Match forfeited and added to stats after 1 hour of player disconnection.`,
+            time: Date.now()
+          });
+          if (room.messages.length > 50) room.messages.shift();
+
+          console.log(`Auto-resolving abandoned room ${roomId} (player left > 1h)`);
+          onGameOver(room, winningTeam);
+          io.to(roomId).emit('game_update', room);
+          return;
+        }
+
+        // Scenario 2: Room is totally inactive (no game actions played or chats sent) for over 1 hour
+        if (room.lastActivityAt && (now - room.lastActivityAt >= 3600000)) {
+          const winningTeam = (room.scores[0] || 0) >= (room.scores[1] || 0) ? 0 : 1;
+          room.scores[winningTeam] = Math.max(room.scores[winningTeam] || 0, 660);
+          room.messages.push({
+            id: nanoid(),
+            sender: 'SYSTEM',
+            text: `⏱️ Automatic Resolution: Match finished and added to stats after 1 hour of total inactivity.`,
+            time: Date.now()
+          });
+          if (room.messages.length > 50) room.messages.shift();
+
+          console.log(`Auto-resolving inactive room ${roomId} (inactive > 1h)`);
+          onGameOver(room, winningTeam);
+          io.to(roomId).emit('game_update', room);
+          return;
+        }
+
+        // Scenario 3: Resign request is pending for over 1 hour (auto-approves)
+        if (room.resignRequest && room.resignRequest.createdAt && (now - room.resignRequest.createdAt >= 3600000)) {
+          console.log(`Auto-approving resign request in room ${roomId} after 1 hour`);
+          
+          const requesterPlayer = room.players.find(p => p.id === room.resignRequest?.requesterId);
+          if (requesterPlayer) {
+            const losingTeam = requesterPlayer.team;
+            const winningTeam = losingTeam === 0 ? 1 : 0;
+            room.scores[winningTeam] = Math.max(room.scores[winningTeam] || 0, 660);
+            room.messages.push({
+              id: nanoid(),
+              sender: 'SYSTEM',
+              text: `⏱️ Automatic Resolution: Resign request automatically approved after 1 hour.`,
+              time: Date.now()
+            });
+            if (room.messages.length > 50) room.messages.shift();
+
+            onGameOver(room, winningTeam);
+            room.resignRequest = undefined;
+            io.to(roomId).emit('game_update', room);
+          }
+        }
+      }
+    });
+  }, 10000); // Check every 10 seconds
+
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running at http://localhost:${PORT}`);
   });
@@ -815,6 +1003,10 @@ async function startServer() {
 function startNewRound(room: Room) {
   room.roundCount++;
   room.phase = GamePhase.BIDDING;
+  
+  // Reset pauses
+  room.isTimerPaused = false;
+  delete room.turnRemainingDuration;
   
   const playerCount = room.mode === '2_PLAYER' ? 2 : 4;
   room.currentTurn = (room.dealerIndex + 1) % playerCount;
@@ -1119,6 +1311,7 @@ function handleTurnTimeout(room: Room) {
 }
 
 function triggerGameUpdate(room: Room) {
+  room.lastActivityAt = Date.now();
   // Clear any existing timer for this room
   const existingTimer = roomTimers.get(room.id);
   if (existingTimer) {
@@ -1133,17 +1326,28 @@ function triggerGameUpdate(room: Room) {
     room.currentTrick.length === 4;
 
   if (activePhases.includes(room.phase) && !isResolution && room.players.length > 0) {
-    room.turnDuration = 30000;
-    room.turnStartedAt = Date.now();
+    if (room.isTimerPaused) {
+      if (room.turnRemainingDuration === undefined) {
+        room.turnDuration = room.phase === GamePhase.DISCARDING ? 60000 : 30000;
+        room.turnRemainingDuration = room.turnDuration;
+      } else {
+        room.turnDuration = room.turnRemainingDuration;
+      }
+    } else {
+      room.turnDuration = room.phase === GamePhase.DISCARDING ? 60000 : 30000;
+      room.turnStartedAt = Date.now();
 
-    const timer = setTimeout(() => {
-      handleTurnTimeout(room);
-    }, room.turnDuration);
+      const timer = setTimeout(() => {
+        handleTurnTimeout(room);
+      }, room.turnDuration);
 
-    roomTimers.set(room.id, timer);
+      roomTimers.set(room.id, timer);
+    }
   } else {
     delete room.turnDuration;
     delete room.turnStartedAt;
+    delete room.turnRemainingDuration;
+    room.isTimerPaused = false;
   }
 
   // Emit room update
