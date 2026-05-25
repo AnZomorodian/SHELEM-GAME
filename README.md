@@ -17,5 +17,5 @@ A professional, real-time multiplayer implementation of the classic Iranian card
 - **Backend**: Node.js, Express, Socket.io
 - **Styling**: Modern dark-themed UI with emerald and gold accents.
 
-### Developed by
-**DeepInk Team**
+### Developed by **DeepInk Team**
+
