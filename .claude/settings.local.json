@@ -4,7 +4,10 @@
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\hanib\\\\IdeaProjects\\\\SHELEM-GAME\" -Recurse -Force)",
       "Bash(Select-Object FullName)",
       "Bash(grep -E '\\\\.\\(ts|tsx|js|jsx|json\\)$')",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(Get-Content \"C:\\\\Users\\\\hanib\\\\IdeaProjects\\\\SHELEM-GAME\\\\package-lock.json\" -Raw)",
+      "Bash(Select-Object -First 200)",
+      "Bash(npm install *)"
     ]
   }
 }
