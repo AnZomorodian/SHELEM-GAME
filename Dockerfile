@@ -4,7 +4,8 @@ FROM node:22-slim AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm install && npm install @rollup/rollup-linux-x64-gnu --no-save 2>/dev/null || true
+RUN npm install && \
+    npm install @rollup/rollup-linux-x64-gnu lightningcss-linux-x64-gnu --no-save 2>/dev/null || true
 
 COPY . .
 RUN npm run build
