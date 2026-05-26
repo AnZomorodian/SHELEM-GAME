@@ -3,7 +3,8 @@
     "allow": [
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\hanib\\\\IdeaProjects\\\\SHELEM-GAME\" -Recurse -Force)",
       "Bash(Select-Object FullName)",
-      "Bash(grep -E '\\\\.\\(ts|tsx|js|jsx|json\\)$')"
+      "Bash(grep -E '\\\\.\\(ts|tsx|js|jsx|json\\)$')",
+      "Bash(git *)"
     ]
   }
 }
