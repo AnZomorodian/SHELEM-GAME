@@ -2,7 +2,6 @@ import express from 'express';
 import path from 'path';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { createServer as createViteServer } from 'vite';
 import { nanoid } from 'nanoid';
 import fs from 'fs';
 import multer from 'multer';
@@ -264,6 +263,7 @@ async function startServer() {
   ioInstance = io;
 
   if (!IS_PROD) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
